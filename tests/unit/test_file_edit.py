@@ -157,9 +157,7 @@ def test_edit_accepts_lf_arguments_for_crlf_files(registry, ctx, project):
     """The model should not have to guess the file's line endings."""
     target = project / "crlf.py"
     target.write_bytes(b"a = 1\r\nb = 2\r\n")
-    registry.execute(
-        "edit", {"file_path": "crlf.py", "old_string": "a = 1\nb = 2", "new_string": "a = 9\nb = 9"}, ctx
-    )
+    registry.execute("edit", {"file_path": "crlf.py", "old_string": "a = 1\nb = 2", "new_string": "a = 9\nb = 9"}, ctx)
     assert target.read_bytes() == b"a = 9\r\nb = 9\r\n"
 
 

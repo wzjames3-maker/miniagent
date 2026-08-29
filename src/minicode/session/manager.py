@@ -8,6 +8,7 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
+from minicode.errors import SessionNotFoundError
 from minicode.session.models import Session, ToolCallRecord, new_session_id, session_summary
 from minicode.storage.json_store import JsonDocumentStore
 from minicode.storage.paths import sessions_dir
@@ -68,7 +69,7 @@ class SessionManager:
     def require(self, session_id: str) -> Session:
         session = self.get(session_id)
         if session is None:
-            raise KeyError(f"Session not found: {session_id}")
+            raise SessionNotFoundError(f"Session not found: {session_id}")
         return session
 
     def exists(self, session_id: str) -> bool:
@@ -97,6 +98,12 @@ class SessionManager:
         """
         parent = self.require(session_id)
         cut = len(parent.messages) if at_message is None else max(0, min(at_message, len(parent.messages)))
+        # Keep tool_calls aligned with the truncated messages.
+        if at_message is None:
+            forked_calls = [ToolCallRecord.from_dict(c.to_dict()) for c in parent.tool_calls]
+        else:
+            expected = sum(len((m.get("extra") or {}).get("tool_calls") or []) for m in parent.messages[:cut])
+            forked_calls = [ToolCallRecord.from_dict(c.to_dict()) for c in parent.tool_calls[:expected]]
         forked = Session(
             id=new_session_id(),
             title=title or f"{parent.title} (fork)",
@@ -106,7 +113,7 @@ class SessionManager:
             model=parent.model,
             cwd=parent.cwd,
             messages=[_clone_message(m) for m in parent.messages[:cut]],
-            tool_calls=[ToolCallRecord.from_dict(c.to_dict()) for c in parent.tool_calls],
+            tool_calls=forked_calls,
             metadata=dict(parent.metadata),
         )
         forked.metadata["forked_from"] = parent.id

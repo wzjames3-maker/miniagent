@@ -93,9 +93,7 @@ def test_app_forwards_env_into_the_bash_tool(project, monkeypatch, tmp_path):
 
 def test_non_interactive_mode_fails_closed():
     """Without a terminal there is nobody to ask - so `ask` must mean refuse."""
-    instance = InteractiveApp(
-        settings=make_settings(), cwd=".", sink=CollectingSink(), non_interactive=True
-    )
+    instance = InteractiveApp(settings=make_settings(), cwd=".", sink=CollectingSink(), non_interactive=True)
     assert instance.permission.non_interactive is True
     assert instance.permission.ask_callback is None
     with pytest.raises(Exception, match="(?i)reject|no interactive"):
@@ -154,10 +152,7 @@ def test_run_refuses_unpermitted_tools_in_non_interactive_mode(app, project):
     )
     app.run_task("run a command")
     observations = [
-        message
-        for request in app.provider.requests
-        for message in request["messages"]
-        if message.get("role") == "tool"
+        message for request in app.provider.requests for message in request["messages"] if message.get("role") == "tool"
     ]
     assert observations and "permission" in observations[0]["content"]
 
@@ -186,9 +181,7 @@ def test_resume_loads_the_previous_history(app, project, monkeypatch, tmp_path):
     app.run_task("remember this")
     session_id = app.session.id
 
-    resumed = InteractiveApp(
-        settings=make_settings(), cwd=str(project), sink=CollectingSink(), non_interactive=True
-    )
+    resumed = InteractiveApp(settings=make_settings(), cwd=str(project), sink=CollectingSink(), non_interactive=True)
     script(resumed, {"content": "second"})
     resumed.resume(session_id)
 

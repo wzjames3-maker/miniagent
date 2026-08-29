@@ -83,9 +83,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     cwd = str(Path(args.cwd).resolve()) if args.cwd else None
     try:
         settings = load_settings(cwd=cwd, config_path=args.config, overrides=args.set)
-    except ValueError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
+    except (ValueError, Exception) as exc:  # ConfigError is a ValueError subclass via Pydantic
+        # Central error handling: config problems map to exit 2.
+        from minicode.errors import MinicodeError
+
+        if isinstance(exc, (MinicodeError, ValueError)):
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        raise
 
     if args.command is None:
         return _interactive(args, settings, cwd)
@@ -312,6 +317,7 @@ permission:
     "python -m pytest*": allow
     "pytest*": allow
     "rm -rf *": deny
+    "rm -rf **": deny
     "*": ask
 
 context:

@@ -227,7 +227,10 @@ class ApplyPatchTool(BaseTool):
     parameters = {
         "type": "object",
         "properties": {
-            "patch": {"type": "string", "description": "The full patch text, including *** Begin Patch / *** End Patch."}
+            "patch": {
+                "type": "string",
+                "description": "The full patch text, including *** Begin Patch / *** End Patch.",
+            }
         },
         "required": ["patch"],
     }
@@ -283,8 +286,7 @@ class ApplyPatchTool(BaseTool):
                 _write_text(target, content)
                 applied.append(f"created {target}")
                 diffs.append(
-                    f"--- /dev/null\n+++ b/{op.path}\n"
-                    + "".join(f"+{line}\n" for line in content.splitlines())
+                    f"--- /dev/null\n+++ b/{op.path}\n" + "".join(f"+{line}\n" for line in content.splitlines())
                 )
                 continue
 
@@ -343,10 +345,22 @@ class ApplyPatchTool(BaseTool):
 
         output = "Patch applied:\n" + "\n".join(f"  - {line}" for line in applied)
         diff_text = "\n".join(d for d in diffs if d)
-        if diff_text and len(output) + len(diff_text) < 8000:
+        # Diff is helpful for review but unbounded — let truncation decide.
+        if diff_text:
             output += f"\n\n{diff_text}"
-        return ToolResult(
+        result = ToolResult(
             title="apply_patch",
             output=output,
             metadata={"files": applied, "operations": [op.kind for op in parsed.ops]},
         )
+        if ctx.truncate is not None:
+            ctx.truncate(result)
+        else:
+            from minicode.tools.truncate import truncate_output
+
+            truncated = truncate_output(result.output, tool=self.name)
+            if truncated.truncated:
+                result.output = truncated.content
+                result.metadata["truncated"] = True
+                result.metadata["output_path"] = truncated.output_path
+        return result

@@ -47,6 +47,7 @@
 ```python
 class MiniLocalEnvironment(LocalEnvironment):
     """mini-swe-agent 的 LocalEnvironment，去掉 submit 魔术字符串。"""
+
     def _check_finished(self, output: dict) -> None:
         return None
 ```

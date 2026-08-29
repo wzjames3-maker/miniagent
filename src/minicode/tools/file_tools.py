@@ -99,8 +99,18 @@ class ReadTool(BaseTool):
             )
 
         lines = text.splitlines()
-        offset = max(1, int(args.get("offset", 1) or 1))
-        limit = int(args.get("limit", READ_MAX_LINES) or READ_MAX_LINES)
+        raw_offset = args.get("offset")
+        raw_limit = args.get("limit")
+        try:
+            offset = max(1, int(raw_offset) if raw_offset is not None else 1)
+        except (TypeError, ValueError):
+            offset = 1
+        try:
+            limit = int(raw_limit) if raw_limit is not None else READ_MAX_LINES
+            if limit <= 0:
+                limit = READ_MAX_LINES
+        except (TypeError, ValueError):
+            limit = READ_MAX_LINES
         selected = lines[offset - 1 : offset - 1 + limit]
 
         rendered: list[str] = []
@@ -126,12 +136,22 @@ class ReadTool(BaseTool):
         if not selected:
             output = f"[file {path} has {len(lines)} lines; nothing to show at offset={offset}]"
 
+        # Delegate to context-aware truncation when available.
         if ctx.truncate is not None:
+            tmp = ToolResult(title=f"read {path.name}", output=output, metadata=dict(metadata))
+            ctx.truncate(tmp)
+            if tmp.truncated:
+                metadata["truncated"] = True
+                metadata["output_path"] = tmp.metadata.get("output_path", "")
+                output = tmp.output
+            else:
+                output = tmp.output
+        else:
             result = truncate_output(output, max_lines=READ_MAX_LINES, tool=self.name)
             if result.truncated:
                 metadata["truncated"] = True
                 metadata["output_path"] = result.output_path
-            output = result.content
+                output = result.content
 
         return ToolResult(title=f"read {path.name}", output=output, metadata=metadata)
 
@@ -176,11 +196,20 @@ class WriteTool(BaseTool):
             )
         summary = f"{'Updated' if existed else 'Created'} {path} ({len(content.splitlines())} lines)"
         output = summary + (f"\n{diff}" if diff else "")
-        return ToolResult(
+        result = ToolResult(
             title=f"write {path.name}",
-            output=output if len(output) < 8000 else summary,
+            output=output,
             metadata={"path": str(path), "created": not existed, "lines": len(content.splitlines())},
         )
+        if ctx.truncate is not None:
+            ctx.truncate(result)
+        else:
+            truncated = truncate_output(result.output, tool=self.name)
+            if truncated.truncated:
+                result.output = truncated.content
+                result.metadata["truncated"] = True
+                result.metadata["output_path"] = truncated.output_path
+        return result
 
 
 class EditTool(BaseTool):
@@ -197,7 +226,10 @@ class EditTool(BaseTool):
         "type": "object",
         "properties": {
             "file_path": {"type": "string", "description": "Absolute path, or path relative to the working directory."},
-            "old_string": {"type": "string", "description": "The exact text to replace (including whitespace/indentation)."},
+            "old_string": {
+                "type": "string",
+                "description": "The exact text to replace (including whitespace/indentation).",
+            },
             "new_string": {"type": "string", "description": "The replacement text."},
             "replace_all": {"type": "boolean", "description": "Replace every occurrence (default false)."},
         },
@@ -273,11 +305,20 @@ class EditTool(BaseTool):
         )
         replacements = count if replace_all else 1
         output = f"Edited {path} ({replacements} replacement{'s' if replacements != 1 else ''})\n{diff}"
-        return ToolResult(
+        result = ToolResult(
             title=f"edit {path.name}",
-            output=output if len(output) < 8000 else f"Edited {path} ({replacements} replacement(s))",
+            output=output,
             metadata={"path": str(path), "replacements": replacements, "diff": diff},
         )
+        if ctx.truncate is not None:
+            ctx.truncate(result)
+        else:
+            truncated = truncate_output(result.output, tool=self.name)
+            if truncated.truncated:
+                result.output = truncated.content
+                result.metadata["truncated"] = True
+                result.metadata["output_path"] = truncated.output_path
+        return result
 
 
 __all__ = ["ReadTool", "WriteTool", "EditTool"]

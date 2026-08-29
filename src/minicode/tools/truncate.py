@@ -93,5 +93,9 @@ def truncate_output(
     marker = f"\n\n...{removed} {unit} truncated...\n\n{prefix}The tool call succeeded but the output was truncated."
     hint = f"Full output saved to: {output_path}\nUse grep to search it, or read with offset/limit."
 
-    content = f"{preview}{marker}\n{hint}" if direction == "head" else f"...{removed} {unit} truncated...\n\n{hint}\n\n{preview}"
+    content = (
+        f"{preview}{marker}\n{hint}"
+        if direction == "head"
+        else f"...{removed} {unit} truncated...\n\n{hint}\n\n{preview}"
+    )
     return TruncationResult(content=content, truncated=True, output_path=output_path, removed=removed, unit=unit)

@@ -183,9 +183,7 @@ class ConsoleUI(EventSink):
 
     def on_compaction(self, info: Mapping[str, Any]) -> None:
         self.console.print()
-        self.print_info(
-            f"context compacted: {info.get('before_tokens', 0)} -> {info.get('after_tokens', 0)} tokens"
-        )
+        self.print_info(f"context compacted: {info.get('before_tokens', 0)} -> {info.get('after_tokens', 0)} tokens")
         for note in info.get("notes") or []:
             self.print_info(f"  {note}")
 

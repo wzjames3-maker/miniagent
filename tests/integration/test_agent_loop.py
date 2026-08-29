@@ -77,7 +77,10 @@ def test_user_to_model_to_tool_to_result_to_model(harness):
             {"tool_calls": [{"name": "read", "arguments": {"file_path": str(target)}}]},
             {
                 "tool_calls": [
-                    {"name": "edit", "arguments": {"file_path": str(target), "old_string": "a + b", "new_string": "a * b"}}
+                    {
+                        "name": "edit",
+                        "arguments": {"file_path": str(target), "old_string": "a + b", "new_string": "a * b"},
+                    }
                 ]
             },
             {"content": "Changed add() to multiply."},
@@ -199,7 +202,11 @@ def test_permission_denial_becomes_a_tool_error(harness):
     target = harness.project / "calc.py"
     agent = harness.build(
         [
-            {"tool_calls": [{"name": "edit", "arguments": {"file_path": str(target), "old_string": "a + b", "new_string": "x"}}]},
+            {
+                "tool_calls": [
+                    {"name": "edit", "arguments": {"file_path": str(target), "old_string": "a + b", "new_string": "x"}}
+                ]
+            },
             {"content": "I was not allowed to edit."},
         ],
         permission=permission,
@@ -263,8 +270,17 @@ def test_auto_mode_skips_prompts_entirely(harness):
     )
     target = harness.project / "calc.py"
     agent = harness.build(
-        [{"tool_calls": [{"name": "edit", "arguments": {"file_path": str(target), "old_string": "a + b", "new_string": "a - b"}}]},
-         {"content": "edited"}],
+        [
+            {
+                "tool_calls": [
+                    {
+                        "name": "edit",
+                        "arguments": {"file_path": str(target), "old_string": "a + b", "new_string": "a - b"},
+                    }
+                ]
+            },
+            {"content": "edited"},
+        ],
         permission=permission,
     )
     agent.run("edit it")
@@ -326,9 +342,9 @@ def test_a_fork_can_be_resumed_and_continues_from_the_same_history(harness):
     result = resumed.run("now what?")
     assert result["submission"] == "second answer"
     # the earlier turn is still in the request the model saw
-    assert any(
-        m.get("role") == "tool" for request in provider.requests for m in request["messages"]
-    ), "resumed agent lost the previous tool result"
+    assert any(m.get("role") == "tool" for request in provider.requests for m in request["messages"]), (
+        "resumed agent lost the previous tool result"
+    )
 
 
 # --------------------------------------------------------------------------- #

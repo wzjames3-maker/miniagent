@@ -27,8 +27,6 @@ def project(tmp_path) -> Path:
     """A scratch directory containing a tiny python project."""
     root = tmp_path / "project"
     root.mkdir()
-    (root / "calc.py").write_bytes(
-        b"def add(a, b):\n    return a + b\n\n\ndef multiply(a, b):\n    return a * b\n"
-    )
+    (root / "calc.py").write_bytes(b"def add(a, b):\n    return a + b\n\n\ndef multiply(a, b):\n    return a * b\n")
     (root / "README.md").write_bytes(b"# demo\n")
     return root

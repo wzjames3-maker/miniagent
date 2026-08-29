@@ -22,6 +22,15 @@ from minicode.tools.base import ToolContext, ToolResult
 __all__ = ["ToolEnvironment"]
 
 
+from dataclasses import dataclass
+
+
+@dataclass
+class EnvConfig:
+    cwd: str = ""
+    timeout: int = 60
+
+
 class ToolEnvironment:
     """Implements mini-swe-agent's ``Environment`` protocol on top of the registry."""
 
@@ -39,7 +48,7 @@ class ToolEnvironment:
         self.permission = permission
         self.context = context
         self.session_id = session_id
-        self.config = type("EnvConfig", (), {"cwd": cwd})()
+        self.config = EnvConfig(cwd=cwd)
 
     # ------------------------------------------------------------------ #
     # mini-swe-agent Environment protocol

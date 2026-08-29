@@ -72,7 +72,7 @@ def builtin_config_path() -> Path:
     return Path(__file__).parent / "default.yaml"
 
 
-DEFAULT_CONFIG_YAML = """
+_FALLBACK_CONFIG_YAML = """
 # minicode default configuration (all values can be overridden per layer)
 default_provider: ""
 default_model: ""
@@ -105,6 +105,7 @@ permission:
     "python -m pytest*": allow
     "pytest*": allow
     "rm -rf *": deny
+    "rm -rf **": deny
     "*": ask
 
 context:
@@ -130,6 +131,18 @@ ui:
   show_tool_arguments: true
   theme: auto
 """.lstrip()
+
+# Single source: if the file exists, its content is authoritative.
+try:
+    _candidate = builtin_config_path()
+    if _candidate.is_file():
+        _file_content = _candidate.read_text(encoding="utf-8").strip()
+        if _file_content:
+            _FALLBACK_CONFIG_YAML = _file_content
+except Exception:
+    pass
+
+DEFAULT_CONFIG_YAML = _FALLBACK_CONFIG_YAML
 
 
 class AgentSettings(BaseModel):
@@ -178,7 +191,9 @@ def _load_yaml(path: Path) -> dict[str, Any]:
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
     except yaml.YAMLError as exc:
-        raise ValueError(f"Invalid YAML in config file {path}: {exc}") from exc
+        from minicode.errors import ConfigError
+
+        raise ConfigError(f"Invalid YAML in config file {path}: {exc}") from exc
     return data if isinstance(data, dict) else {}
 
 

@@ -11,16 +11,18 @@ __all__ = ["handle_slash", "COMMAND_HELP", "available_commands"]
 COMMAND_HELP: list[tuple[str, str]] = [
     ("/help", "show this help"),
     ("/model [provider/model]", "show providers+models, or switch the current model"),
+    ("/models", "list configured providers and models"),
     ("/session", "show the current session"),
     ("/sessions", "list saved sessions"),
     ("/resume <id>", "resume another session"),
     ("/fork [id]", "fork the session (optionally at an earlier point)"),
+    ("/title <text>", "rename the current session"),
     ("/new", "start a brand new session"),
     ("/clear", "same as /new (fresh history)"),
     ("/compact", "force context compaction"),
     ("/tools", "list the enabled tools"),
     ("/permission", "show the active permission rules"),
-    ("/status", "show agent/session statistics"),
+    ("/status, /stats", "show agent/session statistics"),
     ("/exit, /quit", "leave minicode"),
 ]
 
@@ -45,6 +47,8 @@ def handle_slash(app: InteractiveApp, text: str) -> str:
 
     if command == "/model":
         return _model(app, args)
+    if command == "/models":
+        return _models(app)
     if command == "/session":
         return _session(app)
     if command in {"/sessions", "/ls"}:
@@ -53,6 +57,8 @@ def handle_slash(app: InteractiveApp, text: str) -> str:
         return _resume(app, args)
     if command == "/fork":
         return _fork(app, args)
+    if command == "/title":
+        return _title(app, args)
     if command in {"/new", "/clear"}:
         session = app.new_session()
         ui.print_info(f"new session {session.id}")
@@ -153,6 +159,26 @@ def _fork(app: InteractiveApp, args: list[str]) -> str:
         app.ui.print_error(str(exc))
         return "continue"
     app.ui.print_info(f"forked into {session.id} ({session.message_count} messages)")
+    return "continue"
+
+
+def _models(app: InteractiveApp) -> str:
+    app.ui.console.print(app.providers.describe())
+    app.ui.print_info(f"current: {app.provider.model_id}")
+    return "continue"
+
+
+def _title(app: InteractiveApp, args: list[str]) -> str:
+    if not args:
+        app.ui.print_error("usage: /title <new title>")
+        return "continue"
+    title = " ".join(args).strip()
+    try:
+        app.sessions.retitle(app.session.id, title)
+        app.session.title = title
+        app.ui.print_info(f"renamed to {title!r}")
+    except Exception as exc:  # pragma: no cover
+        app.ui.print_error(str(exc))
     return "continue"
 
 

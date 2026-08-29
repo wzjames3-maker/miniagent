@@ -262,7 +262,13 @@ def test_rebuild_restores_history_without_a_model_call():
 def test_rebuild_prunes_but_never_summarises():
     """Resuming must not cost a model call."""
     manager = ContextManager(ContextConfig(prune_protect_tokens=10, prune_minimum_tokens=10))
-    history = [_msg("user", "u"), _msg("assistant", "a"), _tool_msg("X" * 5000), _msg("assistant", "b"), _tool_msg("Y" * 5000)]
+    history = [
+        _msg("user", "u"),
+        _msg("assistant", "a"),
+        _tool_msg("X" * 5000),
+        _msg("assistant", "b"),
+        _tool_msg("Y" * 5000),
+    ]
     restored = manager.rebuild(history)
     assert manager.compaction_count == 0
     assert any((m.get("extra") or {}).get("pruned") for m in restored)

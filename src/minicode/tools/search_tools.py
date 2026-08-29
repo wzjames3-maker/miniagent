@@ -125,7 +125,7 @@ class GlobTool(BaseTool):
                     error=ToolError(code="invalid_pattern", message=f"Invalid glob pattern {pattern!r}: {exc}"),
                 )
 
-        matches.sort(key=lambda p: (p.stat().st_mtime if p.exists() else 0.0), reverse=True)
+        matches.sort(key=lambda p: p.stat().st_mtime if p.exists() else 0.0, reverse=True)
         total = len(matches)
         shown = [str(p) for p in matches[:limit]]
         output = "\n".join(shown) if shown else f"No files matched pattern {pattern!r} in {base}"
@@ -191,7 +191,7 @@ class GrepTool(BaseTool):
             files = [base]
         else:
             files = [p for p in _walk(base) if include is None or fnmatch.fnmatch(p.name, include)]
-            files.sort(key=lambda p: (p.stat().st_mtime if p.exists() else 0.0), reverse=True)
+            files.sort(key=lambda p: p.stat().st_mtime if p.exists() else 0.0, reverse=True)
 
         results: list[str] = []
         files_searched = 0

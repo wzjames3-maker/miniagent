@@ -73,7 +73,10 @@ def _test_env() -> dict[str, str]:
 
     scripts = str(Path(sys.executable).parent)
     scripts_dir = scripts if scripts.endswith("Scripts") else str(Path(sys.executable).parent / "Scripts")
-    return {"PYTHON_BIN": sys.executable, "PATH": scripts + _os.pathsep + scripts_dir + _os.pathsep + _os.environ.get("PATH", "")}
+    return {
+        "PYTHON_BIN": sys.executable,
+        "PATH": scripts + _os.pathsep + scripts_dir + _os.pathsep + _os.environ.get("PATH", ""),
+    }
 
 
 def _build_agent(workspace: Path):

@@ -167,7 +167,9 @@ def test_tool_error_renders_hint():
 
 def test_bash_tool_reports_nonzero_exit_as_error(project):
     tool = BashTool(default_timeout=30, cwd=str(project))
-    result = tool.execute({"command": f'"{sys.executable}" -c "import sys; sys.exit(3)"'}, ToolContext(cwd=str(project)))
+    result = tool.execute(
+        {"command": f'"{sys.executable}" -c "import sys; sys.exit(3)"'}, ToolContext(cwd=str(project))
+    )
     assert not result.ok
     assert result.error.code == "nonzero_exit"
     assert result.metadata["returncode"] == 3

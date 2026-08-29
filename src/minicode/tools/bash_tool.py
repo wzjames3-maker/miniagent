@@ -48,8 +48,25 @@ def destructive_targets(command: str) -> list[str]:
                     break
                 targets.append(following)
                 break
-        if token in {"-rf", "-fr", "-r", "-f"} and targets:
-            continue
+    # Fallback for nested/quoted commands like ``bash -c 'rm -rf /tmp/x'``
+    # where shlex keeps the inner command as one token and the base check fails.
+    if not targets:
+        import re
+
+        for m in re.finditer(r"\b(?:sudo\s+)?(?:rm|rmdir|unlink|shred|del|erase)\b", command):
+            after = command[m.end() :]
+            for tok in re.findall(r"[^\s;|&'\"]+", after):
+                if tok.startswith("-"):
+                    continue
+                if tok in {"&&", "||", ";", "|", ">", ">>"}:
+                    break
+                # strip trailing quotes / commas
+                cleaned = tok.strip("'\"`,;")
+                if cleaned:
+                    targets.append(cleaned)
+                break
+            if targets:
+                break
     return targets
 
 

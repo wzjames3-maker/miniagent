@@ -157,7 +157,7 @@ def test_ask_invokes_callback_once():
     seen = []
     manager = PermissionManager(
         [Rule(permission="bash", pattern="*", action=Action.ASK)],
-        ask_callback=lambda request: (seen.append(request) or AskReply.ONCE),
+        ask_callback=lambda request: seen.append(request) or AskReply.ONCE,
     )
     decision = manager.check("bash", "ls", tool="bash")
     assert decision.allowed
@@ -186,7 +186,7 @@ def test_approving_a_wildcard_covers_the_whole_permission():
     calls = []
     manager = PermissionManager(
         [Rule(permission="bash", pattern="*", action=Action.ASK)],
-        ask_callback=lambda request: (calls.append(request) or AskReply.ALWAYS),
+        ask_callback=lambda request: calls.append(request) or AskReply.ALWAYS,
     )
     manager.check("bash", "ls")
     manager.approve("bash", "*")  # explicit user intent

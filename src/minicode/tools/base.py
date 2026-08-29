@@ -243,7 +243,9 @@ def validate_args(args: Mapping[str, Any], schema: Mapping[str, Any], *, tool_na
                 # be forgiving: coerce numbers/ints when the model stringifies them
                 coerced = _coerce(value, expected)
                 if coerced is None:
-                    raise SchemaError(f"{prefix}argument {key!r} must be of type {expected}, got {type(value).__name__}")
+                    raise SchemaError(
+                        f"{prefix}argument {key!r} must be of type {expected}, got {type(value).__name__}"
+                    )
                 args[key] = coerced  # type: ignore[index]
                 value = coerced
         enum = spec.get("enum")

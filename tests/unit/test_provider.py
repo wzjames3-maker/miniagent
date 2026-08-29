@@ -131,8 +131,7 @@ class FakeClient:
 
 def _openai_response(*, content="", tool_calls=(), reasoning="", finish_reason="stop"):
     calls = [
-        SimpleNamespace(id=cid, function=SimpleNamespace(name=name, arguments=args))
-        for cid, name, args in tool_calls
+        SimpleNamespace(id=cid, function=SimpleNamespace(name=name, arguments=args)) for cid, name, args in tool_calls
     ]
     message = SimpleNamespace(content=content, tool_calls=calls or None, model_extra={})
     if reasoning:
@@ -243,7 +242,9 @@ def test_streaming_accumulates_fragments():
 def test_streaming_collects_reasoning_separately():
     delta = SimpleNamespace(content=None, tool_calls=None, model_extra={})
     delta.reasoning_content = "thinking..."
-    chunk = SimpleNamespace(choices=[SimpleNamespace(delta=delta, finish_reason=None)], usage=None, model_dump=lambda: {})
+    chunk = SimpleNamespace(
+        choices=[SimpleNamespace(delta=delta, finish_reason=None)], usage=None, model_dump=lambda: {}
+    )
     provider = _make_provider(None)
     provider.client.chat.completions.response = iter([chunk])
     events: list[StreamEvent] = []

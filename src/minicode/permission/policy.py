@@ -26,12 +26,16 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from minicode.errors import PermissionDeniedError, PermissionRejectedError
+
 __all__ = [
     "Action",
     "Rule",
     "DEFAULT_ACTION",
     "PermissionDenied",
+    "PermissionDeniedError",
     "PermissionRejected",
+    "PermissionRejectedError",
     "wildcard_match",
     "normalize_pattern",
     "evaluate",
@@ -49,27 +53,31 @@ class Action(str, Enum):
 DEFAULT_ACTION = Action.ASK
 
 
-class PermissionDenied(Exception):
+class PermissionDenied(PermissionDeniedError):  # type: ignore[no-redef]
     """Raised when a rule explicitly denies an operation."""
 
     def __init__(self, permission: str, patterns: Sequence[str], matching: Sequence[Rule] = ()):
+        from minicode.errors import PermissionDeniedError as _Base
+
+        _Base.__init__(self, f"Permission denied for {permission}: {', '.join(patterns) or '*'}")
         self.permission = permission
         self.patterns = list(patterns)
         self.matching = list(matching)
-        super().__init__(f"Permission denied for {permission}: {', '.join(self.patterns) or '*'}")
 
 
-class PermissionRejected(Exception):
+class PermissionRejected(PermissionRejectedError):  # type: ignore[no-redef]
     """Raised when the user rejects an ``ask`` prompt (optionally with feedback)."""
 
     def __init__(self, permission: str, patterns: Sequence[str], feedback: str = ""):
+        from minicode.errors import PermissionRejectedError as _Base
+
+        msg = f"User rejected {permission}: {', '.join(patterns) or '*'}"
+        if feedback:
+            msg += f"\nUser feedback: {feedback}"
+        _Base.__init__(self, msg)
         self.permission = permission
         self.patterns = list(patterns)
         self.feedback = feedback
-        msg = f"User rejected {permission}: {', '.join(self.patterns) or '*'}"
-        if feedback:
-            msg += f"\nUser feedback: {feedback}"
-        super().__init__(msg)
 
 
 @dataclass(frozen=True)
@@ -87,7 +95,9 @@ class Rule:
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> Rule:
-        return cls(permission=str(data["permission"]), pattern=str(data.get("pattern", "*")), action=Action(data["action"]))
+        return cls(
+            permission=str(data["permission"]), pattern=str(data.get("pattern", "*")), action=Action(data["action"])
+        )
 
 
 # --------------------------------------------------------------------------- #
@@ -158,6 +168,7 @@ def _specificity(rule: Rule) -> tuple[int, int, int, int]:
     read. Most-specific-wins is what OpenCode does, and it is what users expect:
     a narrow rule should beat a broad one no matter the order.
     """
+
     def score(value: str) -> int:
         if value in {"*", "**"}:
             return 0

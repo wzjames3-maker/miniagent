@@ -241,9 +241,10 @@ copy — handy for trying a different approach without losing the original:
 ```python
 # programmatic
 from minicode.session.manager import SessionManager
+
 sessions = SessionManager()
 session = sessions.create(provider="openai", model="gpt-4o-mini", cwd=".")
-fork = sessions.fork(session.id, at_message=10)   # optional truncation point
+fork = sessions.fork(session.id, at_message=10)  # optional truncation point
 ```
 
 A session stores: messages, tool-call history (duration, ok, error code,
@@ -337,16 +338,16 @@ Add your own:
 # mytools.py
 from minicode.tools.base import BaseTool, ToolResult
 
+
 class ShoutTool(BaseTool):
     name = "shout"
     permission = "read"
     description = "Shout a message."
-    parameters = {"type": "object",
-                  "properties": {"text": {"type": "string"}},
-                  "required": ["text"]}
+    parameters = {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]}
 
     def run(self, args, ctx):
         return ToolResult(title="shout", output=args["text"].upper())
+
 
 def register_tools(registry):
     registry.register(ShoutTool())

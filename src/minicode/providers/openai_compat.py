@@ -9,8 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
-import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from minicode.context.tokens import content_to_text
@@ -168,69 +167,6 @@ class OpenAICompatProvider(Provider):
             return self._with_retries(lambda: self._run_stream(payload, on_event))
         return self._with_retries(lambda: self._run_blocking(payload, on_event))
 
-    def _throttle(self) -> None:
-        """Optional minimum spacing between requests.
-
-        Cheap hosted endpoints are usually limited by *requests per minute*, and
-        an agent loop can burn through that in seconds. Set ``min_request_interval``
-        (seconds) to pace the loop instead of eating 429s.
-        """
-        interval = float(self.options.get("min_request_interval", 0) or 0)
-        if interval <= 0:
-            return
-        elapsed = time.monotonic() - self._last_request_at
-        if elapsed < interval:
-            time.sleep(interval - elapsed)
-        self._last_request_at = time.monotonic()
-
-    @staticmethod
-    def _retry_after_seconds(exc: Exception) -> float:
-        """Read a ``Retry-After`` (or equivalent) hint off an SDK error."""
-        response = getattr(exc, "response", None)
-        headers = getattr(response, "headers", None)
-        if not headers:
-            return 0.0
-        for key in ("retry-after", "Retry-After", "x-ratelimit-reset-after", "x-ratelimit-reset"):
-            raw = headers.get(key)
-            if raw is None:
-                continue
-            try:
-                return max(0.0, float(str(raw).strip()))
-            except ValueError:
-                continue
-        return 0.0
-
-    def _with_retries(self, fn: Callable[[], AssistantMessage]) -> AssistantMessage:
-        attempts = int(self.options.get("max_retries", 5))
-        base_delay = float(self.options.get("retry_delay", 5.0))
-        max_delay = float(self.options.get("retry_max_delay", 120.0))
-        last_error: Exception | None = None
-        for attempt in range(1, attempts + 1):
-            self._throttle()
-            try:
-                return fn()
-            except ContextLengthError:
-                raise  # retrying will not help - the agent must compact
-            except AuthenticationError:
-                raise
-            except (RateLimitError, ProviderAPIError) as exc:
-                last_error = exc
-            if attempt < attempts:
-                # exponential backoff, but always respect what the server asked for
-                backoff = min(base_delay * (2 ** (attempt - 1)), max_delay)
-                delay = max(backoff, self._retry_after_seconds(last_error))
-                logger.warning(
-                    "provider %s returned %s; retrying in %.1fs (attempt %d/%d)",
-                    self.name,
-                    type(last_error).__name__,
-                    delay,
-                    attempt,
-                    attempts,
-                )
-                time.sleep(delay)
-        assert last_error is not None
-        raise last_error
-
     def _run_blocking(self, payload: dict[str, Any], on_event: StreamCallback | None) -> AssistantMessage:
         try:
             response = self._create(payload)
@@ -244,9 +180,7 @@ class OpenAICompatProvider(Provider):
         tool_calls = []
         for call in message.tool_calls or []:
             arguments, raw = self._parse_tool_arguments(call.function.arguments or "")
-            tool_calls.append(
-                ToolCall(id=call.id, name=call.function.name, arguments=arguments, raw_arguments=raw)
-            )
+            tool_calls.append(ToolCall(id=call.id, name=call.function.name, arguments=arguments, raw_arguments=raw))
         usage = self._usage(getattr(response, "usage", None))
         result = AssistantMessage(
             content=content,
@@ -312,7 +246,11 @@ class OpenAICompatProvider(Provider):
                         entry["name"] += function.name
                         if not entry["started"] and on_event:
                             entry["started"] = True
-                            on_event(StreamEvent(type="tool_call_start", tool_call=ToolCall(id=entry["id"], name=entry["name"])))
+                            on_event(
+                                StreamEvent(
+                                    type="tool_call_start", tool_call=ToolCall(id=entry["id"], name=entry["name"])
+                                )
+                            )
                     if getattr(function, "arguments", None):
                         entry["args"] += function.arguments
                         if on_event:
@@ -362,7 +300,9 @@ class OpenAICompatProvider(Provider):
         if usage is None:
             return Usage()
         details = getattr(usage, "prompt_tokens_details", None) or {}
-        cached = getattr(details, "cached_tokens", None) if not isinstance(details, dict) else details.get("cached_tokens")
+        cached = (
+            getattr(details, "cached_tokens", None) if not isinstance(details, dict) else details.get("cached_tokens")
+        )
         return Usage(
             input_tokens=int(getattr(usage, "prompt_tokens", 0) or 0),
             output_tokens=int(getattr(usage, "completion_tokens", 0) or 0),

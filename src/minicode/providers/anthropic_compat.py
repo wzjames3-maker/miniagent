@@ -9,8 +9,7 @@ arrives as *fragments*, and tool results are ``tool_result`` blocks inside a
 from __future__ import annotations
 
 import json
-import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from minicode.context.tokens import content_to_text
@@ -171,22 +170,6 @@ class AnthropicCompatProvider(Provider):
             return self._with_retries(lambda: self._run_stream(payload, on_event))
         return self._with_retries(lambda: self._run_blocking(payload, on_event))
 
-    def _with_retries(self, fn: Callable[[], AssistantMessage]) -> AssistantMessage:
-        attempts = int(self.options.get("max_retries", 3))
-        delay = float(self.options.get("retry_delay", 2.0))
-        last_error: Exception | None = None
-        for attempt in range(1, attempts + 1):
-            try:
-                return fn()
-            except (ContextLengthError, AuthenticationError):
-                raise
-            except (RateLimitError, ProviderAPIError) as exc:
-                last_error = exc
-            if attempt < attempts:
-                time.sleep(delay * attempt)
-        assert last_error is not None
-        raise last_error
-
     def _run_blocking(self, payload: dict[str, Any], on_event: StreamCallback | None) -> AssistantMessage:
         try:
             response = self.client.messages.create(**payload)
@@ -247,7 +230,11 @@ class AnthropicCompatProvider(Provider):
                             current = {"id": block.id, "name": block.name}
                             partial_json = []
                             if on_event:
-                                on_event(StreamEvent(type="tool_call_start", tool_call=ToolCall(id=block.id, name=block.name)))
+                                on_event(
+                                    StreamEvent(
+                                        type="tool_call_start", tool_call=ToolCall(id=block.id, name=block.name)
+                                    )
+                                )
                     elif event_type == "content_block_delta":
                         delta = getattr(event, "delta", None)
                         delta_type = getattr(delta, "type", "")

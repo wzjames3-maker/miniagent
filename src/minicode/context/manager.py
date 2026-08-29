@@ -198,7 +198,9 @@ class ContextManager:
         turns = self._turn_start_indices(messages)
         if len(turns) <= 1:
             return 0
-        system_offset = 1 if (self.config.keep_system_message and messages and messages[0].get("role") == "system") else 0
+        system_offset = (
+            1 if (self.config.keep_system_message and messages and messages[0].get("role") == "system") else 0
+        )
         turns = [t for t in turns if t >= system_offset]
         if not turns:
             return 0
@@ -264,9 +266,7 @@ class ContextManager:
         result.after_tokens = self.estimate(result.messages)
         self.compaction_count += 1
         self.last_summary = summary
-        result.notes.append(
-            f"compacted {len(head)} messages into a summary ({before} -> {result.after_tokens} tokens)"
-        )
+        result.notes.append(f"compacted {len(head)} messages into a summary ({before} -> {result.after_tokens} tokens)")
         return result
 
     def _summarize(self, head: list[dict[str, Any]]) -> str | None:

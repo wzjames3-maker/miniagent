@@ -61,9 +61,7 @@ class ProviderSpec:
         # include_usage, ...) is forwarded to the provider constructor. Dropping
         # them silently would make documented knobs appear to do nothing.
         options = {
-            key: value
-            for key, value in data.items()
-            if key not in known and key not in {"type", "kind", "models"}
+            key: value for key, value in data.items() if key not in known and key not in {"type", "kind", "models"}
         }
         payload["options"] = {**options, **(data.get("options") or {})}
         return cls(**payload)
@@ -202,9 +200,7 @@ class ProviderRegistry:
             raise RuntimeError("No providers configured. Add a `providers:` section to your config.")
         for spec in self.available_specs():
             return self.create(spec.name)
-        raise RuntimeError(
-            "No provider has an API key. Set the api_key_env variable or add `api_key` to the config."
-        )
+        raise RuntimeError("No provider has an API key. Set the api_key_env variable or add `api_key` to the config.")
 
 
 def build_registry(config: Mapping[str, Any] | None) -> ProviderRegistry:

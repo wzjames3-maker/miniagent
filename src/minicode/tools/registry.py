@@ -68,7 +68,9 @@ class ToolRegistry:
 
     def describe(self) -> str:
         """Human readable listing used by ``/tools`` and the system prompt."""
-        return "\n".join(f"- {tool.name}: {(tool.description or '').strip().splitlines()[0]}" for tool in self._tools.values())
+        return "\n".join(
+            f"- {tool.name}: {(tool.description or '').strip().splitlines()[0]}" for tool in self._tools.values()
+        )
 
     def subset(self, names: Sequence[str]) -> ToolRegistry:
         return ToolRegistry([self.get(name) for name in names])

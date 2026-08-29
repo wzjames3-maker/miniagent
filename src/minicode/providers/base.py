@@ -43,29 +43,15 @@ __all__ = [
 
 
 # --------------------------------------------------------------------------- #
-# errors
+# errors — re-export central hierarchy for backwards compatibility
 # --------------------------------------------------------------------------- #
-class ProviderError(Exception):
-    """Base class for provider failures."""
-
-    retryable = False
-
-
-class AuthenticationError(ProviderError):
-    def __init__(self, message: str = "Authentication failed. Check your API key."):
-        super().__init__(message)
-
-
-class RateLimitError(ProviderError):
-    retryable = True
-
-
-class ContextLengthError(ProviderError):
-    """The request exceeded the model's context window -> triggers compaction."""
-
-
-class ProviderAPIError(ProviderError):
-    retryable = True
+from minicode.errors import (  # noqa: F401  re-export
+    AuthenticationError,
+    ContextLengthError,
+    ProviderAPIError,
+    ProviderError,
+    RateLimitError,
+)
 
 
 # --------------------------------------------------------------------------- #
@@ -252,6 +238,7 @@ class Provider(ABC):
         self.headers = dict(headers or {})
         self.api_key = api_key or self._api_key_from_env()
         self.options = dict(kwargs)
+        self._last_request_at: float = 0.0
 
     # -- identity -------------------------------------------------------- #
     @property
@@ -299,10 +286,7 @@ class Provider(ABC):
         outputs: Sequence[Any],
         template_vars: dict | None = None,
     ) -> list[dict[str, Any]]:
-        calls = [
-            ToolCall.from_mapping(call)
-            for call in (message.get("extra", {}) or {}).get("tool_calls", [])
-        ]
+        calls = [ToolCall.from_mapping(call) for call in (message.get("extra", {}) or {}).get("tool_calls", [])]
         return format_tool_results(calls, outputs)
 
     def get_template_vars(self, **kwargs: Any) -> dict[str, Any]:
@@ -330,6 +314,66 @@ class Provider(ABC):
                 }
             }
         }
+
+    # -- shared retry / throttle ---------------------------------------- #
+    def _throttle(self) -> None:
+        interval = float(self.options.get("min_request_interval", 0) or 0)
+        if interval <= 0:
+            return
+        elapsed = time.monotonic() - getattr(self, "_last_request_at", 0.0)
+        if elapsed < interval:
+            time.sleep(interval - elapsed)
+        self._last_request_at = time.monotonic()  # type: ignore[attr-defined]
+
+    @staticmethod
+    def _retry_after_seconds(exc: Exception) -> float:
+        response = getattr(exc, "response", None)
+        headers = getattr(response, "headers", None)
+        if not headers:
+            return 0.0
+        for key in ("retry-after", "Retry-After", "x-ratelimit-reset-after", "x-ratelimit-reset"):
+            raw = headers.get(key)
+            if raw is None:
+                continue
+            try:
+                return max(0.0, float(str(raw).strip()))
+            except ValueError:
+                continue
+        return 0.0
+
+    def _with_retries(self, fn: Callable[[], AssistantMessage]) -> AssistantMessage:  # type: ignore[no-redef]
+        attempts = int(self.options.get("max_retries", 5))
+        base_delay = float(self.options.get("retry_delay", 5.0))
+        max_delay = float(self.options.get("retry_max_delay", 120.0))
+        last_error: Exception | None = None
+        from minicode.errors import AuthenticationError, ContextLengthError, ProviderAPIError, RateLimitError
+
+        for attempt in range(1, attempts + 1):
+            self._throttle()
+            try:
+                return fn()
+            except ContextLengthError:
+                raise
+            except AuthenticationError:
+                raise
+            except (RateLimitError, ProviderAPIError) as exc:
+                last_error = exc
+            if attempt < attempts:
+                backoff = min(base_delay * (2 ** (attempt - 1)), max_delay)
+                delay = max(backoff, self._retry_after_seconds(last_error))  # type: ignore[arg-type]
+                import logging
+
+                logging.getLogger("minicode.providers.base").warning(
+                    "provider %s returned %s; retrying in %.1fs (attempt %d/%d)",
+                    self.name,
+                    type(last_error).__name__,
+                    delay,
+                    attempt,
+                    attempts,
+                )
+                time.sleep(delay)
+        assert last_error is not None
+        raise last_error
 
     # -- helpers ---------------------------------------------------------- #
     @staticmethod

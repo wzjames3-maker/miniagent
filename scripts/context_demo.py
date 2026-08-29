@@ -27,9 +27,7 @@ def build_history(turns: int = 6, filler: int = 1500) -> list[dict]:
     """A transcript of `turns` agent steps, each with a big tool result."""
     messages: list[dict] = [{"role": "system", "content": "You are a coding agent.", "extra": {}}]
     for index in range(turns):
-        messages.append(
-            {"role": "user", "content": f"step {index}: inspect module_{index}.py", "extra": {}}
-        )
+        messages.append({"role": "user", "content": f"step {index}: inspect module_{index}.py", "extra": {}})
         messages.append(
             {
                 "role": "assistant",
