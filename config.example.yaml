@@ -1,0 +1,135 @@
+# minicode configuration example
+#
+# Copy to ~/.minicode/config.yaml (global) or ./.minicode/config.yaml (project),
+# then edit. Anything you leave out falls back to the built-in defaults
+# (src/minicode/config/default.yaml).
+#
+# Precedence (highest wins):
+#   --set k=v  >  MINICODE_* env vars  >  ./.minicode/config.yaml  >  ~/.minicode/config.yaml  >  built-in defaults
+
+# ---- model selection -------------------------------------------------------
+default_provider: sensenova
+default_model: deepseek-v4-flash
+
+# ---- providers -------------------------------------------------------------
+# `type` selects the wire protocol:
+#   openai_compat     OpenAI chat-completions (also: DeepSeek, Qwen, vLLM,
+#                     OpenRouter, Ollama, Groq, Together, Sensenova, ...)
+#   anthropic_compat  Anthropic messages API
+#   litellm           any of the 100+ providers LiteLLM supports
+#   scripted          deterministic stand-in used by the test-suite
+#
+# You can also point `type` at your own class: "my_package.my_module:MyProvider"
+providers:
+  # An OpenAI-compatible endpoint.
+  sensenova:
+    type: openai_compat
+    api_key_env: SENSENOVA_API_KEY   # preferred: keep secrets out of the file
+    base_url: https://token.sensenova.cn/v1
+    models:
+      - deepseek-v4-flash
+    default_model: deepseek-v4-flash
+    max_tokens: 8192
+    temperature: 0.0
+    timeout: 300
+
+  openai:
+    type: openai_compat
+    api_key_env: OPENAI_API_KEY
+    models: [gpt-4o-mini, gpt-4o]
+    default_model: gpt-4o-mini
+
+  deepseek:
+    type: openai_compat
+    api_key_env: DEEPSEEK_API_KEY
+    base_url: https://api.deepseek.com/v1
+    models: [deepseek-chat, deepseek-reasoner]
+    default_model: deepseek-chat
+
+  anthropic:
+    type: anthropic_compat
+    api_key_env: ANTHROPIC_API_KEY
+    models: [claude-sonnet-4-5, claude-opus-4-5]
+    default_model: claude-sonnet-4-5
+
+  # A local server (Ollama / vLLM / llama.cpp) needs no key.
+  ollama:
+    type: openai_compat
+    base_url: http://localhost:11434/v1
+    models: [qwen2.5-coder:7b]
+    default_model: qwen2.5-coder:7b
+
+  # Optional: route through LiteLLM to reach anything else.
+  gemini:
+    type: litellm
+    api_key_env: GEMINI_API_KEY
+    models: [gemini/gemini-2.0-flash]
+    default_model: gemini/gemini-2.0-flash
+
+# ---- agent loop ------------------------------------------------------------
+agent:
+  step_limit: 200                 # max model calls per turn
+  cost_limit: 10.0                # USD, 0 disables
+  wall_time_limit_seconds: 0      # 0 disables
+  doom_loop_threshold: 3          # interrupt after N identical tool calls (0 = off)
+  max_consecutive_format_errors: 4
+  # Path to your own jinja2 system prompt ("" = built-in)
+  system_template: ""
+
+# ---- permissions -----------------------------------------------------------
+# allow | deny | ask
+#
+# Patterns are paths for file tools and command lines for `bash`.
+#   "*"  matches within one path segment (does not cross "/")
+#   "**" matches across segments; a leading "**/" also matches zero directories
+#
+# The MOST SPECIFIC matching rule wins; ties go to the later rule.
+# Anything unmatched falls back to `ask` (never to a silent allow).
+permission:
+  read: allow
+  glob: allow
+  grep: allow
+  write: ask
+  edit: ask
+  apply_patch: ask
+  delete: ask
+  bash:
+    "git status*": allow
+    "git diff*": allow
+    "git log*": allow
+    "ls*": allow
+    "cat*": allow
+    "python -m pytest*": allow
+    "pytest*": allow
+    # both forms are needed: "*" stops at "/", so "rm -rf *" alone would miss
+    # `rm -rf /something`
+    "rm -rf *": deny
+    "rm -rf **": deny
+    "*": ask
+
+# ---- context management ----------------------------------------------------
+context:
+  max_tokens: 120000              # soft ceiling for the history
+  auto_compact: true
+  compact_threshold: 0.85         # compact at 85% of max_tokens
+  prune: true                     # drop old tool output before summarising
+  prune_protect_tokens: 40000     # keep this much recent tool output intact
+  preserve_recent_tokens: 20000   # budget for the verbatim tail
+  tail_turns: null                # hard cap on preserved turns (null = use budget)
+  tool_output_max_lines: 2000
+  tool_output_max_bytes: 51200
+
+# ---- tools -----------------------------------------------------------------
+tools:
+  enabled: []                     # empty = all builtins: read write edit apply_patch glob grep bash
+  bash_timeout: 120
+  extra_modules: []               # modules exposing register_tools(registry)
+
+# ---- ui --------------------------------------------------------------------
+ui:
+  stream: true
+  max_output_lines: 40
+  show_tool_arguments: true
+
+# ---- environment -----------------------------------------------------------
+env: {}                           # extra env vars for every `bash` tool run

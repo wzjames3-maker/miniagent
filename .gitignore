@@ -1,0 +1,30 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.eggs/
+
+# environments
+.venv/
+venv/
+env/
+
+# tooling
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+.mypy_cache/
+
+# local runtime state
+.minicode/
+e2e-transcript.log
+
+# upstream reference checkouts (cloned for analysis only)
+upstream/
+
+# OS
+.DS_Store
+Thumbs.db
