@@ -33,6 +33,8 @@ Summarizer = Callable[[list[dict[str, Any]]], str]
 
 
 class ContextConfig(BaseModel):
+    model_config = {"extra": "forbid"}
+
     max_tokens: int = 120_000
     """Soft ceiling for the message history handed to the model."""
     auto_compact: bool = True

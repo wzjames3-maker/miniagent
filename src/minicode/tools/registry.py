@@ -141,7 +141,28 @@ class ToolRegistry:
                     details={"permission": exc.permission, "patterns": exc.patterns},
                 ),
             )
-        return self._tools[name].execute(args, ctx)
+        result = self._tools[name].execute(args, ctx)
+        # Centralized truncation (borrowed from opencode's Tool.wrap):
+        # tools return raw output; the registry applies the shared limit so no
+        # tool can bypass it and per-tool truncation boilerplate is eliminated.
+        try:
+            if getattr(ctx, "truncate", None) is not None:
+                # ContextManager.truncate_tool_output mutates result in place
+                ctx.truncate(result)  # type: ignore[operator]
+            else:
+                from minicode.tools.truncate import truncate_output
+
+                truncated = truncate_output(result.output, tool=name)
+                if truncated.truncated:
+                    result.output = truncated.content
+                    result.metadata = {
+                        **(result.metadata or {}),
+                        "truncated": True,
+                        "output_path": truncated.output_path,
+                    }
+        except Exception:
+            pass
+        return result
 
 
 def build_default_registry(

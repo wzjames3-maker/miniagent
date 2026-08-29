@@ -345,22 +345,10 @@ class ApplyPatchTool(BaseTool):
 
         output = "Patch applied:\n" + "\n".join(f"  - {line}" for line in applied)
         diff_text = "\n".join(d for d in diffs if d)
-        # Diff is helpful for review but unbounded — let truncation decide.
         if diff_text:
             output += f"\n\n{diff_text}"
-        result = ToolResult(
+        return ToolResult(
             title="apply_patch",
             output=output,
             metadata={"files": applied, "operations": [op.kind for op in parsed.ops]},
         )
-        if ctx.truncate is not None:
-            ctx.truncate(result)
-        else:
-            from minicode.tools.truncate import truncate_output
-
-            truncated = truncate_output(result.output, tool=self.name)
-            if truncated.truncated:
-                result.output = truncated.content
-                result.metadata["truncated"] = True
-                result.metadata["output_path"] = truncated.output_path
-        return result

@@ -16,7 +16,6 @@ from typing import Any
 from minisweagent.environments.local import LocalEnvironment
 
 from minicode.tools.base import BaseTool, ToolContext, ToolError, ToolResult
-from minicode.tools.truncate import truncate_output
 
 __all__ = ["BashTool", "MiniLocalEnvironment"]
 
@@ -134,13 +133,6 @@ class BashTool(BaseTool):
 
         title = str(args.get("description") or command.splitlines()[0][:80] if command else "bash")
         metadata: dict[str, Any] = {"command": command, "returncode": returncode, "cwd": cwd, "timeout": timeout}
-
-        if ctx.truncate is not None:
-            result = truncate_output(text, tool=self.name, direction="head")
-            if result.truncated:
-                metadata["truncated"] = True
-                metadata["output_path"] = result.output_path
-            text = result.content
 
         result_obj = ToolResult(title=title, output=text, metadata=metadata)
         if returncode not in (0, None):

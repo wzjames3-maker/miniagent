@@ -205,6 +205,8 @@ def default_ruleset() -> list[Rule]:
         Rule(permission="write", pattern="*", action=Action.ASK),
         Rule(permission="apply_patch", pattern="*", action=Action.ASK),
         Rule(permission="delete", pattern="*", action=Action.ASK),
+        Rule(permission="bash", pattern="rm -rf *", action=Action.DENY),
+        Rule(permission="bash", pattern="rm -rf **", action=Action.DENY),
         Rule(permission="bash", pattern="*", action=Action.ASK),
         Rule(permission="*", pattern="*", action=DEFAULT_ACTION),
     ]

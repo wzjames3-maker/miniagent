@@ -1,7 +1,7 @@
 # ARCHITECTURE — minicode
 
 > `minicode` 是以 `mini-swe-agent` 为基座、参考 `opencode` 核心 Coding Agent 设计的纯 Python 终端助手。  
-> 本文件在重构后更新，反映真实依赖与事件流。
+> 本文件在重构后更新，反映真实依赖与事件流，并标注从 `opencode` 借鉴的关键模式。
 
 ## 1. 模块职责
 
@@ -161,3 +161,14 @@ builtin (default.yaml)  --文件缺失--> _FALLBACK_CONFIG_YAML（与 default.ya
 ```
 
 `.env` 双路径加载；`DEFAULT_CONFIG_YAML` 运行时若文件存在则以文件内容覆盖嵌入串，杜绝双源分叉；`_load_yaml` 异常转为 `ConfigError`；`ProviderSpec` `type/kind` 双兼容，`options` 透传 `max_retries/min_request_interval` 等，不静默丢弃。
+
+## 11. 从 opencode 借鉴的关键模式
+
+| 问题 | opencode 做法 | minicode 轻量借鉴 |
+|---|---|---|
+| 工具截断分散、易绕过 | `tool/tool.ts:wrap` 在注册层统一 `decode→execute→truncate.output`，工具只返回原始结果 | `ToolRegistry.execute:144` 集中调用 `ctx.truncate(result)`，工具 `run` 不再处理截断 `src/minicode/tools/file_tools.py:139` |
+| 配置静默丢弃、双源分叉 | `config/config.ts` 强 schema 校验 + 兼容层 `lower` + 单源文件 | `Settings/ContextConfig:148` `extra="forbid"` 拒未知顶层键，`_FALLBACK_CONFIG_YAML` 运行时覆写为文件内容 `settings.py:135` |
+| 重试/节流分散 | 基类统一 `retry + Retry-After + throttle` | `Provider._with_retries/_throttle:321` 提取到 `base.py:321`，`OpenAI/Anthropic` 共享 |
+| 破坏性命令识别脆弱 | `permission/evaluate.ts` 精确匹配 + `*`/`**` 语义 | `BashTool.destructive_targets:34` 保留 `shlex` 主路径并借鉴 opencode 的正则回退覆盖 `bash -c 'rm …'` |
+| 权限默认不安全 | 默认规则显式 `deny` 危险模式 | `default_ruleset:198` 追加 `rm -rf */** deny`，与 `default.yaml:42` 一致 |
+| 工厂耦合 | `Effect.Layer` 分层装配 `ToolRegistry/Config/Permission` | `InteractiveApp` 保留 ` _build_tools/_permission_rules` 等小工厂，职责已在 `cli/app.py:60` 拆分，未来可进一步提为 `cli/factory.py` |

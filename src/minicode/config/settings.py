@@ -146,6 +146,8 @@ DEFAULT_CONFIG_YAML = _FALLBACK_CONFIG_YAML
 
 
 class AgentSettings(BaseModel):
+    model_config = {"extra": "forbid"}
+
     system_template: str = ""
     """Path to a custom system prompt template (jinja2). Empty = built-in."""
     step_limit: int = 200
@@ -158,6 +160,8 @@ class AgentSettings(BaseModel):
 
 
 class ToolsSettings(BaseModel):
+    model_config = {"extra": "forbid"}
+
     enabled: list[str] = Field(default_factory=list)
     """When empty, all builtin tools are enabled."""
     bash_timeout: int = 120
@@ -166,6 +170,8 @@ class ToolsSettings(BaseModel):
 
 
 class UISettings(BaseModel):
+    model_config = {"extra": "forbid"}
+
     stream: bool = True
     max_output_lines: int = 40
     show_tool_arguments: bool = True
@@ -173,6 +179,8 @@ class UISettings(BaseModel):
 
 
 class Settings(BaseModel):
+    model_config = {"extra": "forbid"}
+
     default_provider: str = ""
     default_model: str = ""
     providers: dict[str, Any] = Field(default_factory=dict)
