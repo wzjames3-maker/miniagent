@@ -73,8 +73,6 @@ agent:
   wall_time_limit_seconds: 0      # 0 disables
   doom_loop_threshold: 3          # interrupt after N identical tool calls (0 = off)
   max_consecutive_format_errors: 4
-  # Path to your own jinja2 system prompt ("" = built-in)
-  system_template: ""
 
 # ---- permissions -----------------------------------------------------------
 # allow | deny | ask
@@ -130,6 +128,9 @@ ui:
   stream: true
   max_output_lines: 40
   show_tool_arguments: true
+  # TUI colour palette: default | emerald | ocean | rose | minimal
+  # ("auto" resolves to the default palette)
+  theme: auto
 
 # ---- environment -----------------------------------------------------------
 env: {}                           # extra env vars for every `bash` tool run

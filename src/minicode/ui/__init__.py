@@ -7,7 +7,9 @@ from minicode.ui.events import (
     NullSink,
     TurnResult,
 )
+from minicode.ui.port import UIFrontEnd, UIPort, format_status_line
 from minicode.ui.prompt import InputReader, create_reader
+from minicode.ui.render import clip_lines, format_arguments, render_output
 
 __all__ = [
     "CollectingSink",
@@ -17,5 +19,11 @@ __all__ = [
     "MINICODE_THEME",
     "NullSink",
     "TurnResult",
+    "UIFrontEnd",
+    "UIPort",
+    "clip_lines",
     "create_reader",
+    "format_arguments",
+    "format_status_line",
+    "render_output",
 ]

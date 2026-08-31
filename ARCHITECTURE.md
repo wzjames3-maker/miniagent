@@ -15,12 +15,31 @@ src/minicode/
   context/      消息历史 + Token 预算 + 截断/剪枝/压缩 + 重建
   config/       五层层叠配置（builtin < global < project < env < --set）
   storage/      原子 JSON 文档存储 + 平台路径
-  ui/           EventSink 抽象 + Rich TUI + 提示符
+  project.py    仓库生态探测（语言 / 测试 / 校验命令）—— 语言无关的唯一真相源
+  ui/           EventSink + UIPort 抽象 + Rich 控制台 + Textual 全屏前端
   cli/          argparse 入口 + 斜杠命令分发
   errors.py     统一错误层级（Config/Provider/Tool/Permission/Session/Context/CLI）
 ```
 
 `cli/` 仅装配，`ui/` 仅渲染，`agent/` 仅协调，`tools/` 仅执行，`providers/` 仅翻译，`session/` 仅持久化，`context/` 仅构造，`permission/` 仅决策，`storage/` 仅落盘。单向依赖，禁止反向。
+
+`ui/` 内部再分两层，前端可整体替换：
+
+```
+ui/port.py     UIPort（核心可调的契约）+ UIFrontEnd（UIPort+EventSink 的组合）
+ui/events.py   EventSink：agent -> UI 的单向事件流（runtime_checkable Protocol）
+ui/render.py   两个前端共用的渲染片段（参数摘要、输出截断、diff 高亮）
+ui/console.py  Rich 实现：REPL（默认前端）、`minicode run`
+ui/textual/    Textual 实现：全屏前端（OpenCode 布局），`minicode tui` 显式开启
+   theme.py    主题调色板（5 套）+ 布局 CSS —— 只引用 Textual 自带设计变量
+   widgets.py  纯展示部件：会话侧栏 / 消息流 / 状态栏 / 会话脚注 / 提示条 / 权限条 / 输入框
+   modals.py   弹窗（模型选择器）
+   bridge.py   TextualUI：事件 -> 部件更新（唯一同时认识 agent 与 Textual 的地方）
+   app.py      MiniTUI：装配布局、管理工作线程、仲裁阻塞式提问
+
+前端选择：默认 `InteractiveApp.repl()`（Rich REPL，Aider 交互模型）；
+`minicode tui` 走 Textual。两者共用 `UIPort` + `EventSink` 契约，核心无感知。
+```
 
 ## 2. 依赖关系
 
@@ -65,7 +84,8 @@ run(task)  # 首次 super().run()，续跑 _run_loop()
     for call in tool_calls:
       _check_doom_loop() --InterruptAgentFlow--> 注入用户提示
       sink.on_tool_start
-      env.execute({tool, args}) -> ToolRegistry.execute() -> 权限检查 -> Tool.execute() -> ToolResult
+      unknown/非法参数? -> 不执行工具，原始错误直接回传模型（OpenCode 同款）
+      否则 env.execute({tool, args}) -> ToolRegistry.execute() -> 权限检查 -> Tool.execute() -> ToolResult
       sink.on_tool_result
       record_tool_call -> Session
     sync_session
@@ -114,7 +134,7 @@ class Provider(ABC):
 
 模型无关 `src/minicode/session/models.py:59`：`Session(id,title,provider,model,cwd,messages,tool_calls,metadata)`；`ToolCallRecord` 含 `duration_ms/output_chars/truncated/error_code`。
 
-`SessionManager` `src/minicode/session/manager.py:29` 基于 `JsonDocumentStore` `src/minicode/storage/json_store.py:18`（`mkstemp+fsync+os.replace` 原子写 + `Lock`），目录由 `src/minicode/storage/paths.py:6` 解析（`MINICODE_DATA_DIR` 可覆写）。`fork(at_message)` 按消息截断时同步截断 `tool_calls`（按 `messages[:cut]` 中 `tool_calls` 数量切片），`retitle` `maybe_auto_title` 标题自动生成。
+`SessionManager` `src/minicode/session/manager.py:29` 基于 `JsonDocumentStore` `src/minicode/storage/json_store.py:18`（`mkstemp+fsync+os.replace` 原子写 + `Lock`），目录由 `src/minicode/storage/paths.py:6` 解析（`MINICODE_DATA_DIR` 可覆写）。支持 `list(cwd=...)` / `delete_all(cwd=...)` 按项目筛选与批量删除；CLI 暴露 `sessions --cwd`、`session delete --all [--cwd] [--yes]`。`fork(at_message)` 按消息截断时同步截断 `tool_calls`（按 `messages[:cut]` 中 `tool_calls` 数量切片），`retitle` `maybe_auto_title` 标题自动生成。TUI 左侧会话栏通过 `InteractiveApp.known_sessions(cwd=...)` 只显示当前项目。
 
 ## 7. Context System
 
@@ -144,31 +164,75 @@ Agent -> sink.on_stream_event(text_delta/reasoning_delta/tool_call_*)
      -> sink.on_compaction / on_error / on_turn_start / on_turn_end
 ```
 
-`ConsoleUI` `src/minicode/ui/console.py:42` 实现：流式灰显 thinking 块（`_thinking` 折叠为 `… thought for N chars`）、工具面板（`max_output_lines` 头尾省略）、权限弹窗（`ask_permission:216` `y/a/n`）、状态行、banner。`InputReader` `src/minicode/ui/prompt.py:16` 基于 `prompt_toolkit` 历史与多行（`Ctrl+O/Alt+Enter`）。
+两个前端实现同一套契约，**核心不认识任何一个**：
 
-`handle_slash` `src/minicode/cli/commands.py:32` 分发 `/help /model /models /session /sessions /resume /fork /title /new /clear /compact /tools /permission /status`；`InteractiveApp` `src/minicode/cli/app.py:33` 装配链，`_switch_session` 重建 `ContextManager.rebuild` 后的 Agent，保持 UI 与核心零耦合：替换 `EventSink` 即可得到 CLI/Web/API/测试 Harness。
+| | `ConsoleUI`（Rich） | `TextualUI`（Textual） |
+|---|---|---|
+| 事件来源 | 主线程直出 | 工作线程经 `App.post` 回投 UI 线程 |
+| 流式文本 | 逐 token 打印 | 实时写入消息流的 assistant 消息（Markdown） |
+| 权限提问 | `Prompt.ask` 阻塞读 stdin | 权限条接管焦点，`y/a/n` 或鼠标点击释放工作线程 |
+| 默认关系 | 默认前端（`minicode`） | 可选前端（`minicode tui`） |
+
+`UIFrontEnd` `src/minicode/ui/port.py:43` 是两份契约的**组合**：`InteractiveApp` 用同一个对象
+同时承担 `UIPort` 与 `EventSink`（`sink or ui`），只实现一半的前端在构造时不会报错，而是要等到
+第一个 agent 事件才炸。把这个组合关系显式命名，就把运行期错误提前到契约层，`tests/unit/test_tui.py`
+里有一个"只实现一半必须被拒"的用例守着它。为此 `EventSink` 由普通基类改为
+`runtime_checkable Protocol` —— 子类仍继承 no-op 默认体，"只覆写关心的事件"的用法不受影响。
+
+`ConsoleUI` `src/minicode/ui/console.py:42` 负责流式灰显 thinking 块（`_thinking` 折叠为 `… thought for N chars`）、工具面板（`max_output_lines` 头尾省略）、权限弹窗（`ask_permission:216` `y/a/n`）、状态行、banner。`InputReader` `src/minicode/ui/prompt.py:16` 基于 `prompt_toolkit` 历史与多行（`Ctrl+O/Alt+Enter`）。
+
+`TextualUI` `src/minicode/ui/textual/bridge.py:32` 是唯一同时认识 agent 与 Textual 的模块。跨线程的关键约束有两处：
+
+1. **`App.post` `app.py:157`** —— `call_from_thread` 明确禁止在 app 线程内调用（会锁死它自己要排队的那个循环），但 banner、斜杠命令回显、收尾状态行恰好都产生于 app 线程。判断"我现在在哪条线程"这件事只允许存在一个地方。
+2. **阻塞式提问** —— agent 在工作线程上，答案只有 UI 线程能给出。`_PendingPrompt` 用 `threading.Event` 把工作线程挂起，**收尾统一在消息处理器里做**（`on_permission_bar_answered:222` / `on_composer_submitted:233`），而不是让线程各自清理一半——否则"无 pending 时的残留弹窗"没人关。
+
+`handle_slash` `src/minicode/cli/commands.py:32` 分发 `/help /model /models /session /sessions /resume /fork /title /new /clear /compact /tools /permission /status`；它**只依赖 `UIPort`**，因此同一份命令表在两个前端里行为一致。`InteractiveApp` `src/minicode/cli/app.py:33` 装配链，`_switch_session` 重建 `ContextManager.rebuild` 后的 Agent。新增一个前端只需实现 `UIPort` + `EventSink`，不必改动 `cli/` 与 `agent/`。
+
+TUI 会话栏通过 `known_sessions(cwd=...)` 按当前项目过滤；`action_clear_log` 会同时清空可见 `MessageList`，所以 `/new`、`ctrl+n`、`/clear`、切换/回放会话都不会残留上一个会话的可见历史。左侧高亮会话后按 `d` 删除。
 
 ## 10. 配置层叠
 
 `src/minicode/config/settings.py:1`
 
 ```
-builtin (default.yaml)  --文件缺失--> _FALLBACK_CONFIG_YAML（与 default.yaml 同源，读文件覆写避免分叉）
+builtin (default.yaml)  --文件缺失--> _FALLBACK_CONFIG_TEMPLATE（与 default.yaml 同源，仅缺失时启用）
   ← global   ~/.minicode/config.yaml
   ← project  ./.minicode/config.yaml
   ← env      MINICODE_* （__ 分层，如 MINICODE_AGENT__STEP_LIMIT）
   ← CLI      --set key=value （复用 mini _key_value_spec_to_nested_dict + recursive_merge）
 ```
 
-`.env` 双路径加载；`DEFAULT_CONFIG_YAML` 运行时若文件存在则以文件内容覆盖嵌入串，杜绝双源分叉；`_load_yaml` 异常转为 `ConfigError`；`ProviderSpec` `type/kind` 双兼容，`options` 透传 `max_retries/min_request_interval` 等，不静默丢弃。
+`.env` 双路径加载；`DEFAULT_CONFIG_YAML` 以文件内容为准，文件缺失才用 `_FALLBACK_CONFIG_TEMPLATE` 渲染兜底，杜绝双源分叉；`_load_yaml` 异常转为 `ConfigError`；`ProviderSpec` `type/kind` 双兼容，`options` 透传 `max_retries/min_request_interval` 等，不静默丢弃。
 
 ## 11. 从 opencode 借鉴的关键模式
 
 | 问题 | opencode 做法 | minicode 轻量借鉴 |
 |---|---|---|
 | 工具截断分散、易绕过 | `tool/tool.ts:wrap` 在注册层统一 `decode→execute→truncate.output`，工具只返回原始结果 | `ToolRegistry.execute:144` 集中调用 `ctx.truncate(result)`，工具 `run` 不再处理截断 `src/minicode/tools/file_tools.py:139` |
-| 配置静默丢弃、双源分叉 | `config/config.ts` 强 schema 校验 + 兼容层 `lower` + 单源文件 | `Settings/ContextConfig:148` `extra="forbid"` 拒未知顶层键，`_FALLBACK_CONFIG_YAML` 运行时覆写为文件内容 `settings.py:135` |
+| 配置静默丢弃、双源分叉 | `config/config.ts` 强 schema 校验 + 兼容层 `lower` + 单源文件 | `Settings/ContextConfig:148` `extra="forbid"` 拒未知顶层键，`DEFAULT_CONFIG_YAML` 以文件为准、缺失才用模板兜底 |
 | 重试/节流分散 | 基类统一 `retry + Retry-After + throttle` | `Provider._with_retries/_throttle:321` 提取到 `base.py:321`，`OpenAI/Anthropic` 共享 |
 | 破坏性命令识别脆弱 | `permission/evaluate.ts` 精确匹配 + `*`/`**` 语义 | `BashTool.destructive_targets:34` 保留 `shlex` 主路径并借鉴 opencode 的正则回退覆盖 `bash -c 'rm …'` |
 | 权限默认不安全 | 默认规则显式 `deny` 危险模式 | `default_ruleset:198` 追加 `rm -rf */** deny`，与 `default.yaml:42` 一致 |
-| 工厂耦合 | `Effect.Layer` 分层装配 `ToolRegistry/Config/Permission` | `InteractiveApp` 保留 ` _build_tools/_permission_rules` 等小工厂，职责已在 `cli/app.py:60` 拆分，未来可进一步提为 `cli/factory.py` |
+| UI 与核心互相渗透 | 前端只订阅事件，核心不知道有没有屏幕 | `UIPort` + `EventSink` 双契约，`cli/commands.py` 只依赖 Protocol；Textual 前端可整包删除 |
+| 工具参数非法/截断 | `runTools` 解析失败不执行，原始 error 回传模型 | `execute_actions` 检测 `raw_arguments` 解析失败后不执行工具，直接回传原始解析错误 |
+| Session 管理 | 会话与项目绑定，可在 TUI 中切换/删除 | TUI 会话栏按项目过滤 + `d` 删除；CLI 支持 `sessions --cwd` 与 `session delete --all` |
+| 主题需要每个部件各自适配 | 设计变量 + 单一开关 | 样式表只引用 Textual 自带 `$*` 变量，`ctrl+t` 直接复用框架 `action_toggle_dark`，项目内零调色板 |
+
+## 12. 语言无关
+
+minicode 不在任何地方写死 Python。仓库事实只有一个来源：`src/minicode/project.py`。
+
+```
+detect_project(root) -> ProjectProfile
+    ├─ languages        由根目录 manifest / lockfile 反推（13 个生态）
+    ├─ test_commands    pytest / npm test / go test ./... / cargo test / mvn test / mix test ...
+    └─ lint_commands    ruff / eslint / go vet / cargo clippy / rubocop ...
+```
+
+`ProjectProfile` 同时喂给三处，避免各自演化：
+
+1. **系统提示词** —— `agent/prompts.py` 注入 `Project` 段，并明确"不要假设语言，用这个仓库真正在用的命令"。
+2. **权限白名单** —— `permission/manager.py:default_bash_rules` 由 `ECOSYSTEMS` 生成测试/校验命令模式，所以任何语言的测试命令都自动免询问。
+3. **配置生成** —— `config/settings.py:render_permission_yaml` 用同一份常量渲染 `default.yaml`、内嵌兜底配置和 `minicode config init`，三份不可能分叉。
+
+`project.py` 是**叶子模块**（不 import 任何 minicode 代码），否则 `permission → agent → context → permission` 会成环。 工厂耦合 | `Effect.Layer` 分层装配 `ToolRegistry/Config/Permission` | `InteractiveApp` 保留 ` _build_tools/_permission_rules` 等小工厂，职责已在 `cli/app.py:60` 拆分，未来可进一步提为 `cli/factory.py` |

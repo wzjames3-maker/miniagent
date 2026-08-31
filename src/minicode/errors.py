@@ -20,8 +20,6 @@ __all__ = [
     "PermissionRejectedError",
     "SessionError",
     "SessionNotFoundError",
-    "ContextError",
-    "CLIError",
 ]
 
 
@@ -75,12 +73,4 @@ class SessionError(MinicodeError):
 
 
 class SessionNotFoundError(SessionError, KeyError):
-    pass
-
-
-class ContextError(MinicodeError):
-    pass
-
-
-class CLIError(MinicodeError):
     pass

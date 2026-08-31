@@ -148,7 +148,7 @@ def main() -> int:
 
     started = time.time()
     try:
-        result = agent.run(task)
+        agent.run(task)
     except Exception as exc:  # noqa: BLE001
         import traceback
 

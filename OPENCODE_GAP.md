@@ -18,6 +18,7 @@
 | Tool Result 回传 | ✅ | 结构化回传，含错误码与 hint |
 | 多步骤任务执行 | ✅ | E2E 验证：9 步、13 次工具调用完成修 bug 任务 |
 | 工具失败后的错误恢复 | ✅ | 结构化错误 → 模型读取 → 改参数或换策略 |
+| 非法/截断工具参数 | ✅ | 不执行工具，把原始 JSON 解析错误直接回传模型（OpenCode 同款行为） |
 | 最大步数限制 | ✅ | `agent.step_limit`，另有 cost / wall-time 限制 |
 | Doom Loop 检测 | ✅ | 连续 N 次相同调用即注入中断消息 |
 | Agent 状态记录 | ✅ | `agent/state.py`，步数 / token / 错误数 / 压缩次数 |
@@ -33,9 +34,10 @@
 | `glob` | ✅ | 纯 Python 实现，跳过隐藏目录与二进制 |
 | `grep` | ✅ | 纯 Python 正则搜索，不依赖 ripgrep |
 | `bash` | ✅ | 复用 mini 的 `LocalEnvironment`（超时 / 进程组 kill） |
-| Tool Registry | ✅ | `register` / `unregister` / `subset` / `load_module` 扩展点 |
+| Tool Registry | ✅ | `register` / `subset` / `load_module` 扩展点 |
 | 统一输入输出协议 | ✅ | JSON Schema + `ToolResult(title, output, metadata, error)` |
 | 结构化错误 | ✅ | `code` / `message` / `hint` / `details` |
+| 非法/截断参数处理 | ✅ | 解析失败不执行工具，原始解析错误直接回传模型 |
 | 输出截断 | ✅ | 超限写盘并返回路径，模型可自行读取 |
 
 **与 OpenCode 的差异（有意）**：
@@ -64,6 +66,9 @@
 | 能力 | minicode |
 |---|---|
 | 创建 / 恢复 / 列出 / 删除 | ✅ |
+| 批量删除 / 按项目删除 | ✅ `session delete --all [--cwd <path>] [--yes]` |
+| 按项目筛选列表 | ✅ `sessions --cwd <path>` |
+| TUI 会话栏按项目隔离 | ✅ 左侧只显示当前项目，高亮后按 `d` 删除 |
 | Session fork（可指定消息位置截断） | ✅ |
 | Session 标题（含从首条消息自动生成） | ✅ |
 | 消息历史 | ✅ |
@@ -107,6 +112,10 @@
 | 错误展示 | ✅ |
 | 当前 Model / Provider 展示 | ✅ |
 | `/help` `/model` `/session` `/sessions` `/resume` `/fork` `/clear` `/exit` | ✅ |
+| 会话列表按项目筛选 | ✅ `minicode sessions --cwd <path>` |
+| 会话批量删除 | ✅ `minicode session delete --all [--cwd <path>] [--yes]` |
+| TUI 删除会话 | ✅ 左侧高亮后按 `d` |
+| TUI 新建/切换清空可见历史 | ✅ `/new`、`ctrl+n`、`/clear`、切换会话均清空 transcript |
 | 推理过程展示 | ✅ 灰显 thinking 块，结束后折叠为一行统计 |
 
 ---

@@ -12,17 +12,17 @@ default_model: ""
 providers: {}
 
 agent:
-  # Path to a custom jinja2 system prompt. Empty = the built-in prompt.
-  system_template: ""
   step_limit: 200
   cost_limit: 10.0
   wall_time_limit_seconds: 0
   max_consecutive_format_errors: 4
   # Interrupt after this many identical consecutive tool calls (0 disables)
   doom_loop_threshold: 3
-  confirm_on_finish: false
 
-# allow | deny | ask ; patterns are paths (file tools) or commands (bash)
+# allow | deny | ask ; patterns are paths (file tools) or commands (bash).
+# The bash allow-list below is generated from minicode.project.ECOSYSTEMS so it
+# stays language-agnostic. Note '*' stops at '/', so 'rm -rf' needs both forms
+# to actually block `rm -rf /x`.
 permission:
   read: allow
   glob: allow
@@ -35,13 +35,64 @@ permission:
     "git status*": allow
     "git diff*": allow
     "git log*": allow
+    "git show*": allow
+    "git branch*": allow
     "ls*": allow
     "cat*": allow
     "python -m pytest*": allow
     "pytest*": allow
-    # '*' stops at '/', so both forms are needed to actually block `rm -rf /x`
+    "python -m ruff check .*": allow
+    "ruff check .*": allow
+    "python -m mypy .*": allow
+    "npm test*": allow
+    "pnpm test*": allow
+    "yarn test*": allow
+    "bun test*": allow
+    "npx vitest run*": allow
+    "npx jest*": allow
+    "npm run lint*": allow
+    "npx eslint .*": allow
+    "npx tsc --noEmit*": allow
+    "go test ./...*": allow
+    "go vet ./...*": allow
+    "gofmt -l .*": allow
+    "cargo test*": allow
+    "cargo clippy*": allow
+    "cargo fmt --check*": allow
+    "mvn test*": allow
+    "gradle test*": allow
+    "./gradlew test*": allow
+    "mvn -q verify*": allow
+    "./gradlew check*": allow
+    "bundle exec rspec*": allow
+    "rake test*": allow
+    "bundle exec rubocop*": allow
+    "vendor/bin/phpunit*": allow
+    "composer test*": allow
+    "composer lint*": allow
+    "dotnet test*": allow
+    "dotnet build*": allow
+    "mix test*": allow
+    "mix format --check-formatted*": allow
+    "flutter test*": allow
+    "dart test*": allow
+    "flutter analyze*": allow
+    "dart analyze*": allow
+    "zig build test*": allow
+    "zig fmt --check .*": allow
+    "swift test*": allow
+    "swift build*": allow
+    "ctest*": allow
+    "make test*": allow
+    "meson test*": allow
+    "make lint*": allow
     "rm -rf *": deny
     "rm -rf **": deny
+    "rm -fr *": deny
+    "mkfs*": deny
+    ":(){ :|:& };:*": deny
+    "shutdown*": deny
+    "reboot*": deny
     "*": ask
 
 context:

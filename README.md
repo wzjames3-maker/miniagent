@@ -59,7 +59,34 @@ python -m minicode tools
 
 ## 2. Configure an API key
 
-Generate a starter config, then set the environment variable it points at:
+The easiest way is the interactive provider wizard — no need to hand-edit YAML:
+
+```bash
+minicode providers login
+```
+
+It lets you pick a preset (`openai`, `deepseek`, `anthropic`, `local`) or enter
+a custom OpenAI-compatible endpoint, then prompts for the API key and writes the
+config file for you.
+
+If you're already inside the TUI, you can configure it there too:
+
+```text
+/login
+```
+
+`/login` does the same interactive wizard, then reloads the provider list and
+switches you to the newly configured model. `/provider` is an alias.
+
+You can also do the same thing non-interactively:
+
+```bash
+minicode providers login openai --api-key sk-...
+minicode providers list
+```
+
+If you prefer to manage the config file by hand, generate a starter config and
+set the environment variable it points at:
 
 ```bash
 minicode config init     # writes the global config file
@@ -185,12 +212,62 @@ providers:
 ## 4. Start the CLI
 
 ```bash
-minicode                                   # interactive TUI
+minicode                                   # Aider-style REPL (default)
+minicode tui                               # full-screen Textual TUI (opt-in)
 minicode run "fix the failing tests"       # one task, then exit
 minicode --yolo run "refactor utils.py"    # auto-approve permissions
 minicode --cwd /path/to/project            # work in another directory
 minicode --no-stream run "..."             # no streaming output
 ```
+
+There are two interactive front-ends:
+
+* **REPL (default)** — Aider's interaction model: one input line at the bottom
+  (prompt_toolkit with history), the whole conversation scrolling above it,
+  slash commands, and inline permission prompts.
+* **Textual TUI (opt-in, `minicode tui`)** — OpenCode-style full-screen layout:
+  a session rail on the left (scoped to the current project, grouped by
+  Today / Yesterday / Older), a conversation stream (user / assistant markdown /
+  collapsible tool calls with diff highlighting), a live thinking panel for
+  reasoning models, a status bar (cost / tokens / context / messages / model),
+  a session footer (provider · model · workspace), a composer with a command
+  popover, and a filterable model picker. See [`docs/TUI.md`](docs/TUI.md) for
+  the full walkthrough.
+
+**REPL keys**
+
+| Key | Action |
+|---|---|
+| `enter` | send · `Esc`+`Enter` (or `Alt`+`Enter`) inserts a newline |
+| `↑` / `↓` | walk back through previous prompts |
+| `/` | slash commands (`/help`, `/model`, `/resume`, ...) |
+
+**TUI keys**
+
+| Key | Action |
+|---|---|
+| `/` | open the command popover, right above the composer |
+| `up` / `down` (or `ctrl+p` / `ctrl+n`) | move through the popover |
+| `tab` / `enter` | run the highlighted command |
+| `escape` | close the popover · interrupt the running turn |
+| `enter` | send · `shift+enter` inserts a newline |
+| `ctrl+up` / `ctrl+down` | walk back through previous prompts |
+| `ctrl+p` | command palette |
+| `ctrl+n` | new session · `ctrl+l` clear transcript |
+| `d` | delete the highlighted session in the left rail |
+| `ctrl+t` | toggle dark / light |
+| `ctrl+e` | cycle the colour palette (default / emerald / ocean / rose / minimal) |
+| `ctrl+c` | quit |
+
+Type a single `/` and every command appears, filtered as you keep typing — you
+never need `/help` to find out what exists. Picking a command runs it straight
+away unless it takes an argument (`/resume <id>`, `/model <spec>`, `/title
+<text>`, ...); those get dropped into the composer with the caret waiting where
+the argument goes. In the TUI, `/model` with no argument opens a filterable
+model picker instead of dumping the registry to the transcript.
+
+`minicode run` and piped usage only ever need the REPL path; the Textual TUI is
+started explicitly with `minicode tui`.
 
 `run` is non-interactive by default: permissions resolve from the config, and
 anything left as `ask` is refused (fail-closed). Use `--yolo` to auto-approve.
@@ -204,16 +281,22 @@ Inside the interactive TUI:
 | Command | What it does |
 |---|---|
 | `/help` | list commands |
-| `/model [provider/model]` | show or switch the model |
+| `/login [provider]` | add/update an API key and model interactively in the TUI |
+| `/provider [provider]` | alias for `/login` |
+| `/model [provider/model]` | show providers+models, or switch model (bare `/model` opens the TUI picker) |
 | `/models` | list configured providers and models |
-| `/session` | info about the current session |
+| `/session` | show the current session |
 | `/sessions` | list saved sessions |
 | `/resume <id>` | resume a session by id |
-| `/fork [id]` | fork the current (or given) session |
+| `/fork [id]` | fork the current (or given) session, optionally at an earlier point |
 | `/title <text>` | rename the current session |
-| `/clear` | start a fresh conversation in the same session |
+| `/new` | start a brand new session |
+| `/clear` | alias for `/new` (fresh history) |
+| `/compact` | force context compaction now |
 | `/tools` | list the available tools |
-| `/stats` | step / token / tool statistics |
+| `/permission` | show the active permission rules |
+| `/status` | agent/session statistics |
+| `/commands` / `/command` | manage custom commands |
 | `/exit` | quit (`/quit`, Ctrl-D also work) |
 
 Multi-line input: `Esc`+`Enter` (or `Alt`+`Enter`) inserts a newline.
@@ -225,14 +308,22 @@ Multi-line input: `Esc`+`Enter` (or `Alt`+`Enter`) inserts a newline.
 Sessions are plain JSON files; nothing about them is tied to a provider or model.
 
 ```bash
-minicode sessions                 # list
-minicode --resume ses_ab12cd      # continue one
+minicode sessions                              # list
+minicode sessions --cwd /path/to/project       # list only this project's sessions
+minicode --resume ses_ab12cd                   # continue one
 minicode session show ses_ab12cd
 minicode session delete ses_ab12cd
+minicode session delete --all                  # delete everything (asks confirmation)
+minicode session delete --all --cwd /path      # delete only this project's sessions
+minicode session delete --all --yes            # non-interactive delete everything
+minicode session prune                         # delete empty "New session" placeholders + fix stale titles
 ```
 
-In the TUI, a session is created automatically. `/fork` makes an independent
-copy — handy for trying a different approach without losing the original:
+In the TUI, a session is created automatically. The left rail is scoped to the
+current project and groups sessions by Today / Yesterday / Older; click one to
+resume it, or press `d` on the highlighted session to delete it. `/fork` makes
+an independent copy — handy for trying a different approach without losing the
+original:
 
 ```
 /fork                 # fork at the current point
@@ -332,6 +423,10 @@ All tools share one protocol:
 Large output is truncated (line + byte caps) and the full text is written to
 disk, with the path reported back so the agent can page through it.
 
+If a model returns invalid or truncated tool-call arguments, minicode does not
+execute the tool with empty arguments. Like OpenCode, the raw parser error is
+fed straight back to the model so it can retry with corrected/smaller input.
+
 Add your own:
 
 ```python
@@ -411,7 +506,8 @@ Precedence, highest first:
 minicode config path      # where the config files live
 minicode config show      # the merged, effective config
 minicode config init      # write a starter file
-minicode --set agents.step_limit=50 --set ui.stream=false
+minicode --set agent.step_limit=50 --set ui.stream=false
+minicode --set ui.theme=emerald   # TUI palette: default | emerald | ocean | rose | minimal
 ```
 
 See [`config.example.yaml`](config.example.yaml) for every option with comments.
@@ -495,9 +591,20 @@ src/minicode/
   permission/   allow / deny / ask
   context/      truncation, pruning, compaction
   config/       layered settings
-  ui/           EventSink + rich TUI
+  project.py    repo ecosystem detection -> keeps minicode language-agnostic
+  ui/           EventSink + UIPort, Rich console, Textual front-end
+    console.py  Rich REPL (default)
+    textual/    Textual TUI (opt-in, `minicode tui`) — app.py / widgets.py / bridge.py / modals.py / theme.py
   storage/      JSON store, platform paths
   cli/          argparse entry point
+```
+
+Both front-ends implement the same two contracts, so the core knows neither:
+
+```
+        cli/commands.py  ──UIPort──>  ui/console.py        (Rich REPL, default)
+                                      ui/textual/bridge.py (Textual TUI, opt-in)
+        agent  ──EventSink─────────────────^
 ```
 
 Guarantees, each covered by tests:
@@ -506,7 +613,9 @@ Guarantees, each covered by tests:
 * the agent never implements a tool — everything goes through the registry;
 * tools never import the UI;
 * sessions never hold a model reference;
-* permissions are a standalone module.
+* permissions are a standalone module;
+* the core and the slash commands touch the UI only through `UIPort`;
+* no prompt, tool or default rule hard-codes a programming language.
 
 ---
 
@@ -514,6 +623,7 @@ Guarantees, each covered by tests:
 
 | Document | Contents |
 |---|---|
+| [`docs/TUI.md`](docs/TUI.md) | full walkthrough of the Textual TUI: layout, keys, model picker, themes, sessions |
 | [`MINISWE_DIFF.md`](MINISWE_DIFF.md) | what is reused from mini-swe-agent, what changed and why |
 | [`OPENCODE_GAP.md`](OPENCODE_GAP.md) | which OpenCode features exist, which are out of scope, and why |
 | [`config.example.yaml`](config.example.yaml) | fully commented configuration |

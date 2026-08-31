@@ -134,6 +134,32 @@ def test_tool_errors_are_returned_to_the_model_and_recovered(harness):
     assert any(m.get("role") == "tool" for m in second_request["messages"])
 
 
+def test_truncated_tool_arguments_are_not_executed(harness):
+    """A cut-off tool-call JSON must not be executed with empty arguments."""
+    target = harness.project / "should-not-be-created.html"
+    raw = f'{{"file_path": "{target}", "content": "unterminated'
+    agent = harness.build(
+        [
+            {"tool_calls": [{"name": "write", "arguments": raw}]},
+            {"content": "The write was truncated, so I stopped."},
+        ]
+    )
+    result = agent.run("create a file")
+
+    assert result["exit_status"] == "Submitted"
+    assert not target.exists()
+    assert agent.state.tool_errors == 1
+    tool_message = [
+        message
+        for request in agent.provider.requests
+        for message in request["messages"]
+        if message.get("role") == "tool"
+    ][0]
+    assert "Unterminated string" in tool_message["content"]
+    # OpenCode-style: the raw parser error is fed back without a custom wrapper.
+    assert "error" not in (tool_message.get("extra") or {})
+
+
 def test_model_receives_tool_schemas(harness):
     agent = harness.build([{"content": "ok"}])
     agent.run("hi")

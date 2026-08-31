@@ -100,10 +100,6 @@ class ProviderRegistry:
     # ------------------------------------------------------------------ #
     def provider_names(self) -> list[str]:
         return list(self.specs)
-
-    def models(self, provider: str) -> list[str]:
-        return list(self.specs[provider].models) if provider in self.specs else []
-
     def list_models(self) -> list[str]:
         out: list[str] = []
         for name, spec in self.specs.items():

@@ -25,7 +25,49 @@ __all__ = [
     "AskRequest",
     "PermissionManager",
     "PermissionMode",
+    "DEFAULT_BASH_ALLOW_PATTERNS",
+    "DEFAULT_BASH_DENY_PATTERNS",
+    "default_bash_rules",
+    "default_ruleset",
 ]
+
+#: Irreversible, unrecoverable commands. Always refused, never asked about.
+DEFAULT_BASH_DENY_PATTERNS: tuple[str, ...] = (
+    "rm -rf *",
+    "rm -rf **",
+    "rm -fr *",
+    "mkfs*",
+    ":(){ :|:& };:*",  # fork bomb
+    "shutdown*",
+    "reboot*",
+)
+
+
+def _ecosystem_command_patterns() -> tuple[str, ...]:
+    """Test/lint entry points of every detectable ecosystem, as bash patterns."""
+    from minicode.project import ECOSYSTEMS
+
+    commands: list[str] = []
+    for eco in ECOSYSTEMS:
+        commands.extend(eco.test_commands)
+        commands.extend(eco.lint_commands)
+    return tuple(dict.fromkeys(f"{command}*" for command in commands))
+
+
+#: Non-destructive shell commands that never need to interrupt the user: plain
+#: inspection plus every ecosystem's test/lint entry point. Derived from
+#: :data:`minicode.project.ECOSYSTEMS` so the list cannot drift towards the
+#: language minicode happens to be written in.
+DEFAULT_BASH_ALLOW_PATTERNS: tuple[str, ...] = (
+    "git status*",
+    "git diff*",
+    "git log*",
+    "git show*",
+    "git branch*",
+    "ls*",
+    "cat*",
+    *_ecosystem_command_patterns(),
+)
 
 
 class AskReply(str, Enum):
@@ -91,9 +133,6 @@ class PermissionManager:
     # ------------------------------------------------------------------ #
     # configuration
     # ------------------------------------------------------------------ #
-    def add_rules(self, rules: Iterable[Rule]) -> None:
-        self.config_ruleset.extend(rules)
-
     def approve(self, permission: str, pattern: str = "*", action: Action | str = Action.ALLOW) -> None:
         """Persist an approval for the lifetime of this manager (e.g. "always")."""
         self.approved_ruleset.append(Rule(permission=permission, pattern=pattern, action=Action(action)))
@@ -195,6 +234,18 @@ class PermissionManager:
         }
 
 
+def default_bash_rules() -> list[Rule]:
+    """Shell defaults: never destructive, otherwise confirm.
+
+    Language-agnostic on purpose -- minicode is a coding agent, not a Python
+    one, so every ecosystem's test/lint entry point is pre-approved while
+    anything unknown still asks.
+    """
+    return [Rule(permission="bash", pattern=pattern, action=Action.DENY) for pattern in DEFAULT_BASH_DENY_PATTERNS] + [
+        Rule(permission="bash", pattern=pattern, action=Action.ALLOW) for pattern in DEFAULT_BASH_ALLOW_PATTERNS
+    ]
+
+
 def default_ruleset() -> list[Rule]:
     """Sensible defaults: reads are free, edits and shell need confirmation."""
     return [
@@ -205,8 +256,7 @@ def default_ruleset() -> list[Rule]:
         Rule(permission="write", pattern="*", action=Action.ASK),
         Rule(permission="apply_patch", pattern="*", action=Action.ASK),
         Rule(permission="delete", pattern="*", action=Action.ASK),
-        Rule(permission="bash", pattern="rm -rf *", action=Action.DENY),
-        Rule(permission="bash", pattern="rm -rf **", action=Action.DENY),
+        *default_bash_rules(),
         Rule(permission="bash", pattern="*", action=Action.ASK),
         Rule(permission="*", pattern="*", action=DEFAULT_ACTION),
     ]

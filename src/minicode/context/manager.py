@@ -78,7 +78,6 @@ class ContextManager:
         self.compaction_count = 0
         self.pruned_count = 0
         self.truncated_count = 0
-        self.last_summary: str | None = None
 
     # ------------------------------------------------------------------ #
     # measurement
@@ -141,7 +140,6 @@ class ContextManager:
             return 0
 
         candidates: list[int] = []
-        protected = 0
         total = 0
         # walk backwards; skip the final assistant message (protect current step)
         for index in range(len(messages) - 1, -1, -1):
@@ -155,7 +153,6 @@ class ContextManager:
                 size = estimate_tokens(content_to_text(message.get("content")))
                 total += size
                 if total <= self.config.prune_protect_tokens:
-                    protected += size
                     continue
                 candidates.append(index)
             elif message.get("role") == "assistant":
@@ -267,7 +264,6 @@ class ContextManager:
         result.summary = summary
         result.after_tokens = self.estimate(result.messages)
         self.compaction_count += 1
-        self.last_summary = summary
         result.notes.append(f"compacted {len(head)} messages into a summary ({before} -> {result.after_tokens} tokens)")
         return result
 

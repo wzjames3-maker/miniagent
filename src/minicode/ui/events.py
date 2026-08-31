@@ -9,15 +9,21 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 from minicode.providers.base import AssistantMessage, StreamEvent, ToolCall
 
 __all__ = ["EventSink", "NullSink", "CollectingSink", "TurnResult"]
 
 
-class EventSink:
-    """No-op default implementation - override what you need."""
+@runtime_checkable
+class EventSink(Protocol):
+    """No-op default implementation - override what you need.
+
+    A Protocol rather than a plain base class so a front-end can be recognised
+    as one without inheriting from it. Subclasses still inherit the no-op
+    bodies, so overriding only the events you care about keeps working.
+    """
 
     # streaming / messages
     def on_stream_event(self, event: StreamEvent) -> None: ...

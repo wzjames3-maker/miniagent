@@ -176,6 +176,24 @@ def test_session_lifecycle_through_the_app(app):
     assert not app.sessions.exists(forked.id)
 
 
+def test_cli_sessions_can_filter_and_delete_all(tmp_path, monkeypatch):
+    from minicode.cli.main import main
+    from minicode.session.manager import SessionManager
+
+    monkeypatch.setenv("MINICODE_DATA_DIR", str(tmp_path / "data"))
+    sessions = SessionManager()
+    a = sessions.create(title="project a task", cwd=str(tmp_path / "a"))
+    b = sessions.create(title="project b task", cwd=str(tmp_path / "b"))
+
+    assert main(["sessions", "--cwd", str(tmp_path / "a")]) == 0
+    assert main(["session", "delete", "--all", "--cwd", str(tmp_path / "a"), "--yes"]) == 0
+    assert not sessions.exists(a.id)
+    assert sessions.exists(b.id)
+
+    assert main(["session", "delete", "--all", "--yes"]) == 0
+    assert not sessions.exists(b.id)
+
+
 def test_resume_loads_the_previous_history(app, project, monkeypatch, tmp_path):
     script(app, {"content": "first"})
     app.run_task("remember this")
@@ -253,3 +271,92 @@ def test_compact_shortens_the_history(app, project):
 
     assert len(app.agent.messages) <= messages_before
     assert app.sink.compactions or len(app.agent.messages) == messages_before
+
+
+# --------------------------------------------------------------------------- #
+# providers command
+# --------------------------------------------------------------------------- #
+def test_providers_login_writes_config(tmp_path):
+    import yaml
+
+    from minicode.cli.main import main
+
+    config = tmp_path / "config.yaml"
+    rc = main(
+        [
+            "--config",
+            str(config),
+            "providers",
+            "login",
+            "openai",
+            "--api-key",
+            "sk-test",
+            "--models",
+            "gpt-4o-mini,gpt-4o",
+            "--default-model",
+            "gpt-4o-mini",
+        ]
+    )
+    assert rc == 0
+    data = yaml.safe_load(config.read_text(encoding="utf-8"))
+    assert data["default_provider"] == "openai"
+    assert data["default_model"] == "gpt-4o-mini"
+    assert data["providers"]["openai"]["api_key"] == "sk-test"
+    assert data["providers"]["openai"]["models"] == ["gpt-4o-mini", "gpt-4o"]
+
+
+def test_providers_remove_updates_default(tmp_path):
+    import yaml
+
+    from minicode.cli.main import main
+
+    config = tmp_path / "config.yaml"
+    main(
+        [
+            "--config",
+            str(config),
+            "providers",
+            "login",
+            "openai",
+            "--api-key",
+            "sk-test",
+            "--models",
+            "gpt-4o-mini",
+        ]
+    )
+    rc = main(["--config", str(config), "providers", "remove", "openai"])
+    assert rc == 0
+    data = yaml.safe_load(config.read_text(encoding="utf-8"))
+    assert "openai" not in data["providers"]
+    assert data["default_provider"] == ""
+
+
+def test_tui_login_reloads_and_switches_provider(app, monkeypatch, tmp_path):
+    import yaml
+
+    from minicode.cli.commands import handle_slash
+    from minicode.cli.provider_config import ProviderConfigResult
+    from minicode.storage.paths import global_config_file
+
+    config = global_config_file()
+    config.parent.mkdir(parents=True, exist_ok=True)
+    config.write_text(
+        yaml.safe_dump(
+            {
+                "default_provider": "other",
+                "default_model": "other-model",
+                "providers": {"other": {"type": "scripted", "models": ["other-model"]}},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def fake_configure(name=None, **kwargs):
+        return ProviderConfigResult(name="other", default_model="other-model", path=config, api_key_set=False)
+
+    monkeypatch.setattr("minicode.cli.provider_config.configure_provider", fake_configure)
+
+    assert handle_slash(app, "/login other") == "continue"
+    assert app.provider.name == "other"
+    assert app.provider.model == "other-model"
+    assert app.session.model == "other-model"

@@ -15,6 +15,7 @@ so ``--set`` behaves exactly like mini's own CLI.
 
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -72,42 +73,45 @@ def builtin_config_path() -> Path:
     return Path(__file__).parent / "default.yaml"
 
 
-_FALLBACK_CONFIG_YAML = """
-# minicode default configuration (all values can be overridden per layer)
-default_provider: ""
+def render_permission_yaml() -> str:
+    """The default ``permission:`` block, rendered from the canonical rule list.
+
+    Keeping this generated means the shipped YAML, the embedded fallback and
+    ``minicode init``'s starter file cannot drift apart, and that the
+    auto-approved commands stay language-agnostic (see
+    :data:`minicode.permission.manager.DEFAULT_BASH_ALLOW_PATTERNS`).
+    """
+    from minicode.permission.manager import DEFAULT_BASH_ALLOW_PATTERNS, DEFAULT_BASH_DENY_PATTERNS
+
+    lines = [
+        "permission:",
+        "  read: allow",
+        "  glob: allow",
+        "  grep: allow",
+        "  write: ask",
+        "  edit: ask",
+        "  apply_patch: ask",
+        "  delete: ask",
+        "  bash:",
+    ]
+    for pattern in DEFAULT_BASH_ALLOW_PATTERNS:
+        lines.append(f"    {json.dumps(pattern)}: allow")
+    for pattern in DEFAULT_BASH_DENY_PATTERNS:
+        lines.append(f"    {json.dumps(pattern)}: deny")
+    lines.append('    "*": ask')
+    return "\n".join(lines)
+
+
+_FALLBACK_CONFIG_TEMPLATE = """default_provider: ""
 default_model: ""
-
 providers: {}
-
 agent:
-  system_template: ""
   step_limit: 200
   cost_limit: 10.0
   wall_time_limit_seconds: 0
   max_consecutive_format_errors: 4
   doom_loop_threshold: 3
-  confirm_on_finish: false
-
-permission:
-  read: allow
-  glob: allow
-  grep: allow
-  write: ask
-  edit: ask
-  apply_patch: ask
-  delete: ask
-  bash:
-    "git status*": allow
-    "git diff*": allow
-    "git log*": allow
-    "ls*": allow
-    "cat*": allow
-    "python -m pytest*": allow
-    "pytest*": allow
-    "rm -rf *": deny
-    "rm -rf **": deny
-    "*": ask
-
+{permission_block}
 context:
   max_tokens: 120000
   auto_compact: true
@@ -119,44 +123,35 @@ context:
   tail_turns: null
   tool_output_max_lines: 2000
   tool_output_max_bytes: 51200
-
 tools:
   enabled: []
   bash_timeout: 120
   extra_modules: []
-
 ui:
   stream: true
   max_output_lines: 40
   show_tool_arguments: true
   theme: auto
-""".lstrip()
+env: {}
+"""
 
-# Single source: if the file exists, its content is authoritative.
-try:
-    _candidate = builtin_config_path()
-    if _candidate.is_file():
-        _file_content = _candidate.read_text(encoding="utf-8").strip()
-        if _file_content:
-            _FALLBACK_CONFIG_YAML = _file_content
-except Exception:
-    pass
-
-DEFAULT_CONFIG_YAML = _FALLBACK_CONFIG_YAML
+#: The shipped defaults; only used when the packaged ``default.yaml`` is missing.
+DEFAULT_CONFIG_YAML = (
+    builtin_config_path().read_text(encoding="utf-8").strip()
+    if builtin_config_path().is_file()
+    else _FALLBACK_CONFIG_TEMPLATE.replace("{permission_block}", render_permission_yaml())
+)
 
 
 class AgentSettings(BaseModel):
     model_config = {"extra": "forbid"}
 
-    system_template: str = ""
-    """Path to a custom system prompt template (jinja2). Empty = built-in."""
     step_limit: int = 200
     cost_limit: float = 10.0
     wall_time_limit_seconds: int = 0
     max_consecutive_format_errors: int = 4
     doom_loop_threshold: int = 3
     """Interrupt after this many identical consecutive tool calls (0 = off)."""
-    confirm_on_finish: bool = False
 
 
 class ToolsSettings(BaseModel):
@@ -247,13 +242,24 @@ def load_settings(
 
 
 def _from_environment() -> dict[str, Any]:
-    """Map ``MINICODE_AGENT_STEP_LIMIT=50`` onto ``{"agent": {"step_limit": 50}}``."""
+    """Map ``MINICODE_AGENT_STEP_LIMIT=50`` onto ``{"agent": {"step_limit": 50}}``.
+
+    Only keys whose top-level segment matches a :class:`Settings` field are
+    considered. This keeps infra knobs such as ``MINICODE_DATA_DIR`` (used for
+    storage paths) or the E2E test variables from leaking into the config model
+    and failing validation with ``extra_forbidden``.
+    """
     out: dict[str, Any] = {}
     prefix = "MINICODE_"
+    allowed = set(Settings.model_fields)
     for key, value in os.environ.items():
         if not key.startswith(prefix) or len(key) == len(prefix):
             continue
-        parts = [p.lower() for p in key[len(prefix) :].split("__")]
+        rest = key[len(prefix) :]
+        top = rest.split("__", 1)[0].lower()
+        if top not in allowed:
+            continue
+        parts = [p.lower() for p in rest.split("__")]
         current = out
         for part in parts[:-1]:
             current = current.setdefault(part, {})

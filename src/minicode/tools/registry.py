@@ -37,9 +37,6 @@ class ToolRegistry:
             raise ValueError(f"Tool {tool.name!r} is already registered (use replace=True to override)")
         self._tools[tool.name] = tool
 
-    def unregister(self, name: str) -> None:
-        self._tools.pop(name, None)
-
     def get(self, name: str) -> Tool:
         try:
             return self._tools[name]

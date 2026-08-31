@@ -138,6 +138,7 @@ def session_summary(session: Session) -> dict[str, Any]:
         "id": session.id,
         "title": session.title,
         "model": session.model_id,
+        "cwd": session.cwd,
         "messages": session.message_count,
         "tool_calls": session.tool_call_count,
         "created_at": session.created_at,

@@ -129,11 +129,10 @@ mini 的 agent 调 `model.query(messages)`。minicode 的 `Provider` 需要额�
 
 ```python
 class CodingAgentConfig(AgentConfig):
-    system_template = SYSTEM_TEMPLATE
-    instance_template = INSTANCE_TEMPLATE
+    system_template: str = SYSTEM_TEMPLATE
+    instance_template: str = INSTANCE_TEMPLATE
     doom_loop_threshold: int = 3
-    confirm_on_finish: bool = False
-    stream: bool = True
+    output_path: Path | None = None
 ```
 
 保留 mini 的全部配置字段（`step_limit`、`cost_limit`、模板等），只追加新字段。

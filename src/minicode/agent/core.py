@@ -15,6 +15,7 @@ compaction, and session bookkeeping.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import platform
@@ -31,10 +32,11 @@ from minicode.agent.prompts import COMPACTION_TEMPLATE, INSTANCE_TEMPLATE, SYSTE
 from minicode.agent.state import AgentState, AgentStatus
 from minicode.context.manager import ContextManager
 from minicode.permission.manager import PermissionManager
-from minicode.providers.base import ContextLengthError, Provider, ToolCall
+from minicode.project import ProjectProfile, detect_project
+from minicode.providers.base import ContextLengthError, Provider, ToolCall, format_tool_results
 from minicode.session.manager import SessionManager
 from minicode.session.models import Session, ToolCallRecord
-from minicode.tools.base import ToolResult
+from minicode.tools.base import ToolError, ToolResult
 from minicode.tools.registry import ToolRegistry
 from minicode.ui.events import EventSink, NullSink, TurnResult
 
@@ -56,8 +58,6 @@ class CodingAgentConfig(AgentConfig):
     instance_template: str = INSTANCE_TEMPLATE
     doom_loop_threshold: int = 3
     """Interrupt after this many identical consecutive tool calls (0 disables)."""
-    confirm_on_finish: bool = False
-    stream: bool = True
     output_path: Path | None = None
 
 
@@ -144,6 +144,9 @@ class CodingAgent(DefaultAgent):
         self._fingerprints: list[str] = []
         self._context_retried = False
         self._empty_reply_nudged = False
+        self._interrupted = False
+        #: Detected once: reading the directory on every render would be wasteful.
+        self.project: ProjectProfile = detect_project(self.cwd)
 
         env = ToolEnvironment(
             registry,
@@ -173,6 +176,7 @@ class CodingAgent(DefaultAgent):
             cwd=self.cwd,
             os_name=f"{platform.system()} {platform.release()}",
             date=datetime.now().strftime("%Y-%m-%d"),
+            project=self.project.describe(),
             **kwargs,
         )
 
@@ -238,8 +242,6 @@ class CodingAgent(DefaultAgent):
                     "notes": result.notes,
                 }
             )
-        if result.pruned_tokens:
-            self.state.pruned_outputs = self.context.pruned_count
 
     def _force_compact(self) -> bool:
         """Emergency compaction after a context-window error."""
@@ -276,25 +278,73 @@ class CodingAgent(DefaultAgent):
         if not calls:
             return self._finish(message)
 
-        outputs: list[ToolResult] = []
+        tool_messages: list[dict[str, Any]] = []
         for call in calls:
             self._check_doom_loop(call)
-            self.state.last_tool = call.name
             self.sink.on_tool_start(call)
             started = time.time()
-            output = self.env.execute(ToolEnvironment.action_from_tool_call(call))
-            duration_ms = int((time.time() - started) * 1000)
-            result: ToolResult = output["extra"]["result"]
+            unknown_name = call.name not in self.registry
+            parse_error = _tool_call_parse_error(call)
+            if unknown_name:
+                error = ToolError(
+                    code="unknown_tool",
+                    message=f"Unknown tool {call.name!r}.",
+                    hint=f"Available tools: {', '.join(sorted(self.registry.names())) or '(none)'}",
+                )
+                result = ToolResult(title=call.name, output="", error=error)
+                duration_ms = 0
+            elif parse_error is not None:
+                error = ToolError(code="parse_error", message=parse_error)
+                result = ToolResult(title=call.name, output="", error=error)
+                duration_ms = 0
+            else:
+                output = self.env.execute(ToolEnvironment.action_from_tool_call(call))
+                duration_ms = int((time.time() - started) * 1000)
+                result: ToolResult = output["extra"]["result"]
 
             self.sink.on_tool_result(call, result)
             self._record_tool_call(call, result, duration_ms)
             self.state.tool_calls += 1
             if not result.ok:
                 self.state.tool_errors += 1
-            outputs.append(result)
+
+            if unknown_name:
+                # OpenCode-style: tell the model exactly which tool is invalid.
+                tool_messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": call.id,
+                        "content": (
+                            f"Invalid tool_call: {json.dumps(call.name)}. "
+                            f"Available options are: {json.dumps(list(self.registry.names()))}. Please try again"
+                        ),
+                        "extra": {
+                            "tool_name": call.name,
+                            "tool_arguments": call.arguments,
+                            "timestamp": time.time(),
+                        },
+                    }
+                )
+            elif parse_error is not None:
+                # OpenCode-style: feed the raw parser error straight back to the
+                # model as a plain tool message, without executing the tool.
+                tool_messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": call.id,
+                        "content": parse_error,
+                        "extra": {
+                            "tool_name": call.name,
+                            "tool_arguments": call.arguments,
+                            "timestamp": time.time(),
+                        },
+                    }
+                )
+            else:
+                tool_messages.extend(format_tool_results([call], [result]))
 
         self.sync_session()
-        return self.add_messages(*self.model.format_observation_messages(message, outputs, self.get_template_vars()))
+        return self.add_messages(*tool_messages)
 
     def _record_tool_call(self, call: ToolCall, result: ToolResult, duration_ms: int) -> None:
         if self.session is None:
@@ -395,6 +445,32 @@ class CodingAgent(DefaultAgent):
     # ------------------------------------------------------------------ #
     # run
     # ------------------------------------------------------------------ #
+    def request_interrupt(self) -> None:
+        """Ask the running turn to stop at the next step boundary.
+
+        The agent runs on a worker thread, so the UI cannot kill it mid-request;
+        it can only ask. :meth:`step` checks this before every model call, so a
+        long tool call still finishes, but no new one starts.
+        """
+        self._interrupted = True
+
+    def step(self) -> list[dict]:
+        """One step, or an immediate stop if the UI asked for one.
+
+        Stopping means emitting mini's own trailing ``exit`` message rather than
+        raising: both loops (mini's and ours) break on it, so the turn unwinds
+        through the normal path and the partial transcript stays in the session.
+        """
+        if self._interrupted:
+            return self.add_messages(
+                {
+                    "role": "exit",
+                    "content": "Interrupted",
+                    "extra": {"exit_status": "Interrupted", "submission": ""},
+                }
+            )
+        return super().step()
+
     def run(self, task: str = "", **kwargs: Any) -> dict:
         """Run until the turn ends.
 
@@ -402,6 +478,7 @@ class CodingAgent(DefaultAgent):
         calls *continue* it, which is what the interactive TUI needs.
         """
         self._empty_reply_nudged = False
+        self._interrupted = False
         if self.messages:
             if task:
                 self.add_messages({"role": "user", "content": task, "extra": {}})
@@ -410,7 +487,7 @@ class CodingAgent(DefaultAgent):
             self.sink.on_turn_start(task)
             result = super().run(task, **kwargs)
 
-        self.state.status = AgentStatus.FINISHED
+        self.state.status = AgentStatus.INTERRUPTED if self._interrupted else AgentStatus.FINISHED
         self.sync_session()
         if self.session is not None:
             self.sessions.maybe_auto_title(self.session)
@@ -506,6 +583,22 @@ def _assistant_from_message(message: Mapping[str, Any]) -> Any:
         finish_reason=str(extra.get("finish_reason", "")),
         reasoning=str(extra.get("reasoning", "")),
     )
+
+
+def _tool_call_parse_error(call: ToolCall) -> str | None:
+    """Return the parser error for a tool call, or ``None`` if it can run.
+
+    Mirrors OpenCode: when a provider returns non-empty raw arguments that do
+    not parse as JSON, the raw parser error is fed straight back to the model
+    and the tool is not executed.
+    """
+    if not call.raw_arguments or call.arguments:
+        return None
+    try:
+        json.loads(call.raw_arguments)
+    except (json.JSONDecodeError, TypeError) as exc:
+        return str(exc)
+    return None
 
 
 def _render_conversation(messages: Sequence[Mapping[str, Any]], *, limit_chars: int = 60_000) -> str:

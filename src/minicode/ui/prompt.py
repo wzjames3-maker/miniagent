@@ -10,8 +10,6 @@ from collections.abc import Iterable
 
 __all__ = ["InputReader", "create_reader"]
 
-MULTILINE_HINT = "  (Ctrl+O or Alt+Enter for multiline)"
-
 
 class InputReader:
     """Reads user input, with optional persistent history."""
@@ -39,12 +37,7 @@ class InputReader:
             return PromptSession(history=history, enable_history_search=True, multiline=False)
         except Exception:  # noqa: BLE001 - prompt_toolkit is optional at runtime
             return None
-
-    @property
-    def interactive(self) -> bool:
-        return self._session is not None
-
-    def read(self, prompt: str = "> ", *, multiline: bool = False) -> str:
+    def read(self, prompt: str = "> ", *, multiline: bool = False, prompt_html: str | None = None) -> str:
         if self._session is None:
             try:
                 return input(prompt if not multiline else "")
@@ -53,6 +46,10 @@ class InputReader:
         try:
             if multiline:
                 return self._read_multiline()
+            if prompt_html is not None:
+                from prompt_toolkit.formatted_text import HTML
+
+                return self._session.prompt(HTML(prompt_html), multiline=False)
             return self._session.prompt(prompt, multiline=False)
         except EOFError:
             return "/exit"

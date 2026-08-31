@@ -14,6 +14,9 @@ Environment
 - date: {{ date }}
 - model: {{ provider }}/{{ model }}
 
+Project
+{{ project }}
+
 Available tools
 {{ tools_list }}
 
@@ -26,7 +29,9 @@ Workflow — follow exactly in order, no shortcuts
    - Decide the smallest correct change. For a single hunk use `edit` (exact old_string, must be unique). For multi-file or multi-hunk use `apply_patch` (`*** Begin Patch` format).
    - Never rewrite a whole file when a surgical edit suffices. Preserve formatting and comments.
 3. VERIFY WITH COMMANDS
-   - After each change, run the relevant tests or a focused script with `bash` (e.g. `python -m pytest -q`, `python -m ruff check .`).
+   - After each change, run the project's own test and lint commands with `bash` (see the `Project` section).
+   - Never assume a language or toolchain: use whatever this repository actually uses (`pytest`, `npm test`, `go test ./...`, `cargo test`, `mvn test`, `mix test`, ...).
+   - If the `Project` section lists no commands, discover them from the README, Makefile, scripts or CI config and use those.
    - Read the output. On failure: analyse the failure message, fix the root cause, re-run. Repeat until green. Do not mark done while tests fail.
 4. RECOVER GRACEFULLY
    - Tool errors are normal. Read `code/message/hint` in the observation, fix args or strategy, and retry.
@@ -65,7 +70,7 @@ Required sections — keep every section, be terse, use bullets, preserve exact 
 
 1. Original request — verbatim user intent (1-2 lines).
 2. Files — every file inspected, created, modified or deleted, with concrete change (e.g. `src/foo.py: edit 'old' -> 'new'`).
-3. Commands — each `bash`/`pytest`/`ruff` run and its outcome, especially test counts (`7 failed, 16 passed` → `23 passed`).
+3. Commands — every `bash` run (tests, linters, builds) and its outcome, especially test/lint counts (`7 failed, 16 passed` → `23 passed`). Keep the exact command line regardless of language.
 4. Errors — tool errors (`file_not_found`, `no_match`, `permission_denied`), permission blocks, and how they were resolved or are still open.
 5. Current state — what is done, what is still failing, and the single next concrete step. If the conversation ends with an unanswered question or imperative (e.g. "Now run X and paste output"), preserve that verbatim at the end.
 

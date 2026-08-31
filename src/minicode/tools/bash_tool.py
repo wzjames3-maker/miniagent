@@ -95,14 +95,6 @@ class BashTool(BaseTool):
         self.cwd = cwd
         self.env = MiniLocalEnvironment(cwd=cwd, env=env or {}, timeout=default_timeout)
 
-    def configure(self, *, cwd: str = "", default_timeout: int | None = None) -> None:
-        if cwd:
-            self.cwd = cwd
-            self.env.config.cwd = cwd
-        if default_timeout:
-            self.default_timeout = default_timeout
-            self.env.config.timeout = default_timeout
-
     def patterns(self, args: Mapping[str, Any]) -> list[str]:
         return [str(args.get("command", "*")).strip()]
 

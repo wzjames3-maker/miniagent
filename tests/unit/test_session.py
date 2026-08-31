@@ -64,6 +64,28 @@ def test_delete_removes_the_document(sessions):
     assert not sessions.delete(session.id)
 
 
+def test_delete_many_and_delete_all(sessions):
+    first = sessions.create()
+    second = sessions.create()
+    third = sessions.create()
+    assert sessions.delete_many([first.id, second.id]) == 2
+    assert not sessions.exists(first.id)
+    assert not sessions.exists(second.id)
+    assert sessions.exists(third.id)
+    assert sessions.delete_all() == 1
+    assert not sessions.exists(third.id)
+    assert sessions.delete_all() == 0
+
+
+def test_list_and_delete_all_can_filter_by_cwd(sessions):
+    project_a = sessions.create(title="a", cwd="/tmp/project-a")
+    project_b = sessions.create(title="b", cwd="/tmp/project-b")
+    assert [s.id for s in sessions.list(cwd="/tmp/project-a")] == [project_a.id]
+    assert sessions.delete_all(cwd="/tmp/project-a") == 1
+    assert not sessions.exists(project_a.id)
+    assert sessions.exists(project_b.id)
+
+
 def test_require_raises_on_missing(sessions):
     with pytest.raises(KeyError, match="Session not found"):
         sessions.require("nope")
@@ -223,3 +245,72 @@ def test_session_model_defaults_are_sane():
     assert session.messages == []
     assert session.tool_calls == []
     assert session.title == "New session"
+
+
+# --------------------------------------------------------------------------- #
+# auto-title peeling (wrapped Task:/Instructions: template)
+# --------------------------------------------------------------------------- #
+_WRAPPED_TASK = (
+    "Task:\nread the file\n\n"
+    "Instructions:\n- Treat the task above as the single source of truth.\n"
+    "- Follow the Workflow in the system prompt exactly.\n"
+    "- When you finish, summarize and stop calling tools."
+)
+
+
+def test_auto_title_peels_the_task_template():
+    """Titles must come from the real request, not the Task:/Instructions: shell."""
+    assert auto_title(_WRAPPED_TASK) == "read the file"
+
+
+def test_auto_title_peels_non_ascii_task_template():
+    wrapped = "Task:\n你好\n\nInstructions:\n- Treat the task above as the single source of truth."
+    assert auto_title(wrapped) == "你好"
+
+
+def test_auto_title_keeps_plain_messages_unwrapped():
+    assert auto_title("refactor the parser") == "refactor the parser"
+
+
+def test_maybe_auto_title_titles_from_unwrapped_task(sessions):
+    session = sessions.create()
+    sessions.append_message(session, {"role": "user", "content": _WRAPPED_TASK, "extra": {}})
+    assert sessions.maybe_auto_title(session)
+    assert session.title == "read the file"
+
+
+# --------------------------------------------------------------------------- #
+# prune empty placeholder sessions
+# --------------------------------------------------------------------------- #
+def test_prune_removes_only_empty_placeholders(sessions):
+    empty = sessions.create()  # "New session", no messages -> persisted
+    real = sessions.create(title="real work")
+    sessions.append_message(real, {"role": "user", "content": "hi", "extra": {}})
+    sessions.save(real)
+    assert sessions.exists(empty.id)
+    assert sessions.exists(real.id)
+
+    removed = sessions.prune_empty()
+    assert removed == 1
+    assert not sessions.exists(empty.id)
+    assert sessions.exists(real.id)
+
+
+def test_repair_titles_fixes_old_wrapped_titles(sessions):
+    """Sessions written by the old titler keep a Task:/Instructions: title; repair it."""
+    session = sessions.create(title="Task: read the file Instructions: - Treat the task above as the single so...")
+    sessions.append_message(session, {"role": "user", "content": _WRAPPED_TASK, "extra": {}})
+    sessions.save(session)
+
+    fixed = sessions.repair_titles()
+    assert fixed == 1
+    restored = sessions.require(session.id)
+    assert restored.title == "read the file"
+
+
+def test_repair_titles_leaves_clean_titles_alone(sessions):
+    session = sessions.create(title="clean title")
+    sessions.append_message(session, {"role": "user", "content": "hi", "extra": {}})
+    sessions.save(session)
+    assert sessions.repair_titles() == 0
+    assert sessions.require(session.id).title == "clean title"
