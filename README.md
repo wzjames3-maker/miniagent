@@ -1,113 +1,142 @@
 # minicode
 
-A lightweight, pure-Python **OpenCode-like coding agent core**, built on top of
-[mini-swe-agent](https://github.com/SWE-agent/mini-swe-agent).
+一个轻量、纯 Python 的 **OpenCode 风格 Coding Agent**，基于 [mini-swe-agent](https://github.com/SWE-agent/mini-swe-agent) 构建。
 
-It is not a clone of OpenCode — it is the *coding agent core* of OpenCode
-(multi-step loop, tools, permissions, sessions, context management) re-implemented
-as a small Python project, reusing mini-swe-agent's agent loop and command
-execution instead of rewriting them.
+它不是一个 OpenCode 克隆，而是把 OpenCode 的 **Coding Agent 核心**（多步循环、工具调用、权限、会话、上下文管理）用一个小型 Python 项目重新实现，并复用 mini-swe-agent 的 Agent 循环与命令执行能力。
 
-```
-Requirements: Python >= 3.10, one API key. No Node.js / TypeScript / Bun.
+```text
+要求：Python >= 3.10，一个 API Key。
+不需要 Node.js / TypeScript / Bun。
 ```
 
 ---
 
-## Table of contents
+## 目录
 
-1. [Install](#1-install)
-2. [Configure an API key](#2-configure-an-api-key)
-3. [Providers and models](#3-providers-and-models)
-4. [Start the CLI](#4-start-the-cli)
-5. [Slash commands](#5-slash-commands)
-6. [Sessions](#6-sessions)
-7. [Permissions](#7-permissions)
-8. [Tools](#8-tools)
-9. [Context management](#9-context-management)
-10. [Configuration reference](#10-configuration-reference)
-11. [Run the tests](#11-run-the-tests)
-12. [End-to-end example](#12-end-to-end-example)
-13. [Architecture](#13-architecture)
-14. [Related documents](#14-related-documents)
+1. [功能特性](#1-功能特性)
+2. [快速开始](#2-快速开始)
+3. [安装](#3-安装)
+4. [配置 API Key](#4-配置-api-key)
+5. [Provider 与模型](#5-provider-与模型)
+6. [启动方式](#6-启动方式)
+7. [斜杠命令](#7-斜杠命令)
+8. [会话管理](#8-会话管理)
+9. [权限系统](#9-权限系统)
+10. [内置工具](#10-内置工具)
+11. [上下文管理](#11-上下文管理)
+12. [配置参考](#12-配置参考)
+13. [运行测试](#13-运行测试)
+14. [架构简介](#14-架构简介)
+15. [相关文档](#15-相关文档)
 
 ---
 
-## 1. Install
+## 1. 功能特性
+
+| 特性 | 说明 |
+|---|---|
+| 🖥️ 双前端 | 默认 Aider 风格 REPL；可选全屏 Textual TUI（`minicode tui`） |
+| 🔌 多 Provider | OpenAI-compatible、Anthropic-compatible、LiteLLM、自定义 Provider |
+| 🛠️ 多工具 | `read` / `write` / `edit` / `apply_patch` / `glob` / `grep` / `bash` |
+| 🧠 推理模型支持 | 流式显示 thinking 块；只有思考没有回答时自动提示模型补回答 |
+| 💬 会话管理 | 自动保存、恢复、fork、按项目隔离、批量删除 |
+| 🔐 权限系统 | `allow` / `deny` / `ask` 三级策略；非交互环境 fail-closed |
+| 📦 上下文管理 | 截断、剪枝、压缩，长任务不爆上下文 |
+| 🧩 可扩展 | 自定义工具、自定义 Provider、自定义命令 |
+| 🧪 测试完善 | 单元 + 集成 + TUI 测试，当前 `312 passed / 2 skipped` |
+
+---
+
+## 2. 快速开始
 
 ```bash
-# from a checkout
+# 1. 安装
+python -m venv .venv
+source .venv/bin/activate
+pip install -e .
+
+# 2. 配置 Provider（交互式）
+minicode providers login
+
+# 3. 启动
+minicode            # Aider 风格 REPL
+minicode tui        # 全屏 Textual TUI
+```
+
+也可以直接跑一次性任务：
+
+```bash
+minicode run "修复失败的测试"
+```
+
+---
+
+## 3. 安装
+
+```bash
+# 从源码安装
 python -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -e .
 
-# or, once published
+# 发布后也可以
 pip install minicode
 ```
 
-Verify:
+验证安装：
 
 ```bash
 python -m minicode --help
 python -m minicode tools
 ```
 
-> `python -m minicode` is the canonical entry point. A `minicode` console script
-> is installed alongside it.
+> `python -m minicode` 是标准入口；安装后也会有 `minicode` 命令。
 
 ---
 
-## 2. Configure an API key
+## 4. 配置 API Key
 
-The easiest way is the interactive provider wizard — no need to hand-edit YAML:
+推荐使用交互式向导，不需要手写 YAML：
 
 ```bash
 minicode providers login
 ```
 
-It lets you pick a preset (`openai`, `deepseek`, `anthropic`, `local`) or enter
-a custom OpenAI-compatible endpoint, then prompts for the API key and writes the
-config file for you.
+可以选择预设（`openai`、`deepseek`、`anthropic`、`local`）或自定义 OpenAI-compatible 地址，然后输入 API Key。
 
-If you're already inside the TUI, you can configure it there too:
+在 TUI 里也可以直接配置：
 
 ```text
 /login
 ```
 
-`/login` does the same interactive wizard, then reloads the provider list and
-switches you to the newly configured model. `/provider` is an alias.
+`/login` 与 `/provider` 等价，配置完成会自动切换模型。
 
-You can also do the same thing non-interactively:
+非交互配置：
 
 ```bash
 minicode providers login openai --api-key sk-...
 minicode providers list
 ```
 
-If you prefer to manage the config file by hand, generate a starter config and
-set the environment variable it points at:
+手动管理配置：
 
 ```bash
-minicode config init     # writes the global config file
-minicode config path     # shows where it went
+minicode config init     # 生成全局配置文件
+minicode config path     # 查看配置文件位置
 ```
 
+环境变量方式：
+
 ```bash
-# macOS / Linux
 export OPENAI_API_KEY=sk-...
-
-# Windows (PowerShell)
-$env:OPENAI_API_KEY = "sk-..."
 ```
 
-Any OpenAI-compatible endpoint works. For example, Sensenova:
+任何 OpenAI-compatible 服务都可以用，例如 Sensenova：
 
 ```bash
 export SENSENOVA_API_KEY=sk-...
 ```
-
-with this in the config file:
 
 ```yaml
 default_provider: sensenova
@@ -121,32 +150,31 @@ providers:
     models: [deepseek-v4-flash]
 ```
 
-Check that everything resolves:
+检查配置是否生效：
 
 ```bash
 minicode models
 # * sensenova [openai_compat, key-ok]: deepseek-v4-flash
 ```
 
-Keys can also be inlined (`api_key: sk-...`), but then keep the file private.
-Prefer `api_key_env`.
+也可以把 Key 直接写在配置文件里（`api_key: sk-...`），但请确保文件权限安全。更推荐 `api_key_env`。
 
-A `.env` file in the working directory is loaded automatically.
+工作目录下的 `.env` 文件会自动加载。
 
 ---
 
-## 3. Providers and models
+## 5. Provider 与模型
 
-`type` selects the wire protocol:
+`type` 决定线上协议：
 
-| `type` | Covers |
+| `type` | 适用 |
 |---|---|
-| `openai_compat` | OpenAI, DeepSeek, Qwen, Sensenova, vLLM, Ollama, OpenRouter, Groq, Together … |
-| `anthropic_compat` | Anthropic messages API |
-| `litellm` | any of the 100+ providers LiteLLM supports (needs `pip install litellm`) |
-| `my.module:MyProvider` | your own `Provider` subclass |
+| `openai_compat` | OpenAI、DeepSeek、Qwen、Sensenova、vLLM、Ollama、OpenRouter、Groq、Together 等 |
+| `anthropic_compat` | Anthropic Messages API |
+| `litellm` | LiteLLM 支持的 100+ Provider（需 `pip install litellm`） |
+| `my.module:MyProvider` | 自定义 Provider |
 
-Declare as many as you like:
+示例：
 
 ```yaml
 providers:
@@ -167,267 +195,230 @@ providers:
     api_key_env: ANTHROPIC_API_KEY
     models: [claude-sonnet-4-5]
 
-  ollama:                     # local, no key needed
+  ollama:
     type: openai_compat
     base_url: http://localhost:11434/v1
     models: [qwen2.5-coder:7b]
 ```
 
-Pick one for this run:
+指定模型启动：
 
 ```bash
-minicode -m deepseek/deepseek-chat          # provider/model
-minicode -m gpt-4o-mini                     # bare model, searched across providers
+minicode -m deepseek/deepseek-chat
+minicode -m gpt-4o-mini
 ```
 
-Switch mid-session with `/model` (see below).
+会话内可用 `/model` 切换模型。
 
-### Reasoning models
+### 推理模型
 
-DeepSeek-V4/R1, o-series, QwQ and friends emit their thinking in
-`reasoning_content` and often leave `content` empty. minicode handles this:
+DeepSeek-V4/R1、o-series、QwQ 等模型会在 `reasoning_content` 中输出思考过程。minicode 会：
 
-* reasoning is streamed to the terminal in a dimmed "thinking…" block,
-  visually separate from the answer;
-* if a reply contains only reasoning, the agent is nudged **once** to produce a
-  visible answer instead of silently ending the turn.
+- 在终端里用灰色 "thinking…" 块实时展示推理过程；
+- 如果模型只输出了思考、没有可见回答，会自动提示模型补一次正式回答。
 
-### Rate limits
-
-Cheap endpoints are usually limited by *requests per minute*. Options:
+### 速率限制
 
 ```yaml
 providers:
   mine:
-    min_request_interval: 6   # minimum seconds between requests
+    min_request_interval: 6   # 最小请求间隔（秒）
     max_retries: 6
-    retry_delay: 10           # exponential backoff base
-    retry_max_delay: 90       # backoff ceiling
+    retry_delay: 10           # 指数退避基数
+    retry_max_delay: 90       # 退避上限
 ```
 
-`Retry-After` sent by the server always wins over the computed backoff.
+服务端返回的 `Retry-After` 优先级最高。
 
 ---
 
-## 4. Start the CLI
+## 6. 启动方式
 
 ```bash
-minicode                                   # Aider-style REPL (default)
-minicode tui                               # full-screen Textual TUI (opt-in)
-minicode run "fix the failing tests"       # one task, then exit
-minicode --yolo run "refactor utils.py"    # auto-approve permissions
-minicode --cwd /path/to/project            # work in another directory
-minicode --no-stream run "..."             # no streaming output
+minicode                                   # 默认：Aider 风格 REPL
+minicode tui                               # 全屏 Textual TUI（可选）
+minicode run "修复失败的测试"               # 单次任务后退出
+minicode --yolo run "重构 utils.py"        # 自动批准权限
+minicode --cwd /path/to/project            # 指定工作目录
+minicode --no-stream run "..."             # 关闭流式输出
 ```
 
-There are two interactive front-ends:
+### REPL（默认）
 
-* **REPL (default)** — Aider's interaction model: one input line at the bottom
-  (prompt_toolkit with history), the whole conversation scrolling above it,
-  slash commands, and inline permission prompts.
-* **Textual TUI (opt-in, `minicode tui`)** — OpenCode-style full-screen layout:
-  a session rail on the left (scoped to the current project, grouped by
-  Today / Yesterday / Older), a conversation stream (user / assistant markdown /
-  collapsible tool calls with diff highlighting), a live thinking panel for
-  reasoning models, a status bar (cost / tokens / context / messages / model),
-  a session footer (provider · model · workspace), a composer with a command
-  popover, and a filterable model picker. See [`docs/TUI.md`](docs/TUI.md) for
-  the full walkthrough.
+Aider 交互模型：底部一行输入，上方滚动显示完整对话，支持斜杠命令和权限确认。
 
-**REPL keys**
-
-| Key | Action |
+| 按键 | 作用 |
 |---|---|
-| `enter` | send · `Esc`+`Enter` (or `Alt`+`Enter`) inserts a newline |
-| `↑` / `↓` | walk back through previous prompts |
-| `/` | slash commands (`/help`, `/model`, `/resume`, ...) |
+| `enter` | 发送；`Esc`+`Enter`（或 `Alt`+`Enter`）换行 |
+| `↑` / `↓` | 浏览历史输入 |
+| `/` | 斜杠命令（`/help`、`/model`、`/resume` ...） |
 
-**TUI keys**
+### Textual TUI（可选）
 
-| Key | Action |
+OpenCode 风格全屏界面：
+
+- 左侧会话栏：只显示当前项目的会话，按 Today / Yesterday / Older 分组
+- 消息流：用户 / 助手 Markdown / 可折叠工具调用 / 系统消息
+- thinking 面板：实时显示推理模型的思考过程
+- 状态栏：cost / tokens / context / 消息数 / 模型
+- 底部：provider · model · workspace
+- 输入框：多行输入 + `/` 命令弹窗
+- 模型选择器：`/model` 回车弹出可过滤列表
+
+| 按键 | 作用 |
 |---|---|
-| `/` | open the command popover, right above the composer |
-| `up` / `down` (or `ctrl+p` / `ctrl+n`) | move through the popover |
-| `tab` / `enter` | run the highlighted command |
-| `escape` | close the popover · interrupt the running turn |
-| `enter` | send · `shift+enter` inserts a newline |
-| `ctrl+up` / `ctrl+down` | walk back through previous prompts |
-| `ctrl+p` | command palette |
-| `ctrl+n` | new session · `ctrl+l` clear transcript |
-| `d` | delete the highlighted session in the left rail |
-| `ctrl+t` | toggle dark / light |
-| `ctrl+e` | cycle the colour palette (default / emerald / ocean / rose / minimal) |
-| `ctrl+c` | quit |
-
-Type a single `/` and every command appears, filtered as you keep typing — you
-never need `/help` to find out what exists. Picking a command runs it straight
-away unless it takes an argument (`/resume <id>`, `/model <spec>`, `/title
-<text>`, ...); those get dropped into the composer with the caret waiting where
-the argument goes. In the TUI, `/model` with no argument opens a filterable
-model picker instead of dumping the registry to the transcript.
-
-`minicode run` and piped usage only ever need the REPL path; the Textual TUI is
-started explicitly with `minicode tui`.
-
-`run` is non-interactive by default: permissions resolve from the config, and
-anything left as `ask` is refused (fail-closed). Use `--yolo` to auto-approve.
+| `/` | 打开命令弹窗 |
+| `up` / `down`（或 `ctrl+p` / `ctrl+n`） | 在弹窗中移动 |
+| `tab` / `enter` | 运行高亮命令 |
+| `escape` | 关闭弹窗 / 中断当前 turn |
+| `enter` | 发送；`shift+enter` 换行 |
+| `ctrl+up` / `ctrl+down` | 浏览历史输入 |
+| `ctrl+p` | 命令面板 |
+| `ctrl+n` | 新建会话；`ctrl+l` 清空 transcript |
+| `d` | 删除左侧高亮会话 |
+| `ctrl+t` | 切换深色 / 浅色 |
+| `ctrl+e` | 循环切换 5 套配色 |
+| `ctrl+c` | 退出 |
 
 ---
 
-## 5. Slash commands
+## 7. 斜杠命令
 
-Inside the interactive TUI:
-
-| Command | What it does |
+| 命令 | 作用 |
 |---|---|
-| `/help` | list commands |
-| `/login [provider]` | add/update an API key and model interactively in the TUI |
-| `/provider [provider]` | alias for `/login` |
-| `/model [provider/model]` | show providers+models, or switch model (bare `/model` opens the TUI picker) |
-| `/models` | list configured providers and models |
-| `/session` | show the current session |
-| `/sessions` | list saved sessions |
-| `/resume <id>` | resume a session by id |
-| `/fork [id]` | fork the current (or given) session, optionally at an earlier point |
-| `/title <text>` | rename the current session |
-| `/new` | start a brand new session |
-| `/clear` | alias for `/new` (fresh history) |
-| `/compact` | force context compaction now |
-| `/tools` | list the available tools |
-| `/permission` | show the active permission rules |
-| `/status` | agent/session statistics |
-| `/commands` / `/command` | manage custom commands |
-| `/exit` | quit (`/quit`, Ctrl-D also work) |
+| `/help` | 显示帮助 |
+| `/login [provider]` | 配置 / 更新 API Key 和模型 |
+| `/provider [provider]` | `/login` 的别名 |
+| `/model [provider/model]` | 查看 / 切换模型；TUI 中不带参数会打开模型选择器 |
+| `/models` | 列出已配置的 Provider 和模型 |
+| `/session` | 显示当前会话信息 |
+| `/sessions` | 列出已保存会话 |
+| `/resume <id>` | 恢复指定会话 |
+| `/fork [id]` | fork 当前（或指定）会话 |
+| `/title <text>` | 重命名当前会话 |
+| `/new` | 新建会话 |
+| `/clear` | `/new` 的别名 |
+| `/compact` | 立即执行上下文压缩 |
+| `/tools` | 列出可用工具 |
+| `/permission` | 显示当前权限规则 |
+| `/status` | 显示 Agent / 会话统计 |
+| `/commands` / `/command` | 管理自定义命令 |
+| `/exit` | 退出（`/quit`、Ctrl-D 也可以） |
 
-Multi-line input: `Esc`+`Enter` (or `Alt`+`Enter`) inserts a newline.
+多行输入：`Esc`+`Enter` 或 `Alt`+`Enter`。
 
 ---
 
-## 6. Sessions
+## 8. 会话管理
 
-Sessions are plain JSON files; nothing about them is tied to a provider or model.
+会话是纯 JSON 文件，不绑定 Provider / Model。
 
 ```bash
-minicode sessions                              # list
-minicode sessions --cwd /path/to/project       # list only this project's sessions
-minicode --resume ses_ab12cd                   # continue one
+minicode sessions                              # 列出全部
+minicode sessions --cwd /path/to/project       # 只列出某个项目的会话
+minicode --resume ses_ab12cd                   # 恢复会话
 minicode session show ses_ab12cd
 minicode session delete ses_ab12cd
-minicode session delete --all                  # delete everything (asks confirmation)
-minicode session delete --all --cwd /path      # delete only this project's sessions
-minicode session delete --all --yes            # non-interactive delete everything
-minicode session prune                         # delete empty "New session" placeholders + fix stale titles
+minicode session delete --all                  # 删除全部（会确认）
+minicode session delete --all --cwd /path      # 删除某个项目的全部会话
+minicode session delete --all --yes            # 非交互删除全部
+minicode session prune                         # 清理空 "New session" 占位
 ```
 
-In the TUI, a session is created automatically. The left rail is scoped to the
-current project and groups sessions by Today / Yesterday / Older; click one to
-resume it, or press `d` on the highlighted session to delete it. `/fork` makes
-an independent copy — handy for trying a different approach without losing the
-original:
+TUI 中的会话操作：
 
-```
-/fork                 # fork at the current point
-```
+- 左侧只显示当前项目的会话
+- 点击历史会话 → 切换并回放
+- 高亮后按 `d` → 删除
+- `/new`、`ctrl+n`、`/clear` 都会清空可见历史
+
+代码方式：
 
 ```python
-# programmatic
 from minicode.session.manager import SessionManager
 
 sessions = SessionManager()
 session = sessions.create(provider="openai", model="gpt-4o-mini", cwd=".")
-fork = sessions.fork(session.id, at_message=10)  # optional truncation point
+fork = sessions.fork(session.id, at_message=10)
 ```
 
-A session stores: messages, tool-call history (duration, ok, error code,
-truncation), current provider/model, cwd, title (auto-derived from the first
-user message) and arbitrary metadata.
+会话保存内容：消息历史、工具调用历史（耗时 / 是否成功 / 错误码 / 是否截断）、Provider / Model、工作目录、标题、元数据。
 
 ---
 
-## 7. Permissions
+## 9. 权限系统
 
-Three actions — `allow`, `deny`, `ask` — applied at three levels:
+三种动作：`allow`、`deny`、`ask`，作用在三个层级。
 
 ```yaml
 permission:
-  read: allow                     # tool level
+  read: allow
   glob: allow
   grep: allow
   write: ask
   edit: ask
   delete: ask
-  bash:                           # command level
+  bash:
     "git status*": allow
     "python -m pytest*": allow
     "rm -rf **": deny
     "*": ask
-  apply_patch:                    # path level
+  apply_patch:
     "**/*.env": deny
     "src/**": allow
 ```
 
-Pattern syntax:
+匹配规则：
 
-| Pattern | Meaning |
+| 模式 | 含义 |
 |---|---|
-| `*` | within one path segment (does **not** cross `/`) |
-| `**` | across segments |
-| `**/foo` | matches `foo` **and** `a/b/foo` (ripgrep/gitignore behaviour) |
-| `?` | one character |
+| `*` | 单个路径段内匹配（不跨 `/`） |
+| `**` | 跨路径段 |
+| `**/foo` | 匹配 `foo` 和 `a/b/foo` |
+| `?` | 单个字符 |
 
-> **Gotcha:** because `*` stops at `/`, `rm -rf *` does not match
-> `rm -rf /etc`. Use `rm -rf **` to actually block it. The shipped default
-> config includes both forms.
+> 注意：`*` 不跨 `/`，所以 `rm -rf *` 不会匹配 `rm -rf /etc`。要拦截请用 `rm -rf **`。
 
-Resolution rules:
+解析规则：
 
-1. **The most specific matching rule wins.** A catch-all `*: ask` at the end of
-   the file does not override `read: allow` above it.
-2. Ties go to the later rule, so "always allow" approvals override the config.
-3. Unmatched falls back to `ask` — never to a silent allow.
-4. If there is no way to ask (no TTY, `run` without `--yolo`), the operation is
-   **refused**.
+1. 最具体的规则优先。
+2. 同样具体时，后面的规则优先。
+3. 未匹配默认 `ask`，绝不静默放行。
+4. 非交互环境无法询问时，直接拒绝（fail-closed）。
 
-Destructive commands (`rm`, `rmdir`, `shred`, …) additionally require the
-`delete` permission for their targets.
-
-Non-interactive auto-approval:
+非交互自动允许：
 
 ```bash
 minicode --yolo run "..."
 ```
 
-or `mode: auto` in the config (still honours explicit `deny` rules).
+或配置 `mode: auto`（显式 `deny` 仍然生效）。
 
 ---
 
-## 8. Tools
+## 10. 内置工具
 
-| Tool | Purpose |
+| 工具 | 作用 |
 |---|---|
-| `read` | read a file with line numbers; `offset`/`limit` paging |
-| `write` | create or overwrite a file (creates parent dirs, shows a diff) |
-| `edit` | replace an exact string; must be unique unless `replace_all` |
-| `apply_patch` | multi-file add/update/delete/move in one call |
-| `glob` | find files by pattern |
-| `grep` | regex search over file contents |
-| `bash` | run a shell command (tests, builds, git) |
+| `read` | 带行号读取文件，支持 `offset` / `limit` 分页 |
+| `write` | 创建或覆盖文件，自动创建父目录，显示 diff |
+| `edit` | 精确替换文本；必须唯一匹配，除非 `replace_all` |
+| `apply_patch` | 一次调用完成多文件新增 / 修改 / 删除 / 移动 |
+| `glob` | 按模式查找文件 |
+| `grep` | 正则搜索文件内容 |
+| `bash` | 执行 Shell 命令（测试、构建、git 等） |
 
-All tools share one protocol:
+所有工具遵循统一协议：
 
-* a JSON Schema description, sent to the model as-is;
-* a `permission` key (`read`, `write`, `edit`, `bash`, …);
-* a `ToolResult(title, output, metadata, error)` return value — **tools never
-  raise**, failures become structured observations the agent can recover from.
+- JSON Schema 描述参数
+- `permission` 权限键
+- `ToolResult(title, output, metadata, error)` 返回，**工具不抛异常**
 
-Large output is truncated (line + byte caps) and the full text is written to
-disk, with the path reported back so the agent can page through it.
+大输出会自动截断（行数 + 字节数双上限），完整内容写盘并返回路径，Agent 可以继续用 `read` / `grep` 查阅。
 
-If a model returns invalid or truncated tool-call arguments, minicode does not
-execute the tool with empty arguments. Like OpenCode, the raw parser error is
-fed straight back to the model so it can retry with corrected/smaller input.
+如果模型返回非法或截断的工具参数，minicode **不会用空参数执行工具**，而是把原始解析错误直接回传模型，让模型重试（与 OpenCode 行为一致）。
 
-Add your own:
+自定义工具：
 
 ```python
 # mytools.py
@@ -455,182 +446,110 @@ tools:
 
 ---
 
-## 9. Context management
+## 11. 上下文管理
 
-Long coding sessions die from unbounded history. Three mechanisms, in
-increasing aggressiveness:
+长会话主要通过三种机制控制上下文：
 
-1. **Truncation** — every tool result is capped; the full text goes to disk.
-2. **Pruning** — old *tool outputs* are replaced by a placeholder. The tool
-   *call* stays, so the history remains readable and the model still knows what
-   it did. The last step is always protected.
-3. **Compaction** — older turns are summarised into one message. The recent tail
-   is preserved verbatim inside a token budget.
+1. **截断**：每个工具输出设上限，超出部分写盘。
+2. **剪枝**：删除旧工具输出，保留调用本身；最近一步始终保护。
+3. **压缩**：把旧对话摘要成一条消息，最近内容按 token 预算保留原文。
 
 ```yaml
 context:
   max_tokens: 120000
   auto_compact: true
-  compact_threshold: 0.85       # compact at 85% of max_tokens
+  compact_threshold: 0.85       # 达到 85% 触发压缩
   prune: true
   prune_protect_tokens: 40000
-  preserve_recent_tokens: 20000 # budget for the verbatim tail
-  tail_turns: null              # hard cap; null = use the budget
+  preserve_recent_tokens: 20000 # 压缩时保留的原文预算
+  tail_turns: null              # 硬性保留轮数；null = 用预算
   tool_output_max_lines: 2000
   tool_output_max_bytes: 51200
 ```
 
-Notes:
+说明：
 
-* Compaction also triggers on a provider `context length` error — the agent
-  compacts and retries once instead of crashing.
-* Split points are **user turns** in a multi-turn session, and **assistant
-  steps** within a single long turn. Without the latter, a long single-task run
-  could never be compacted — exactly the runaway-history case this exists for.
-* Resuming or forking a session rebuilds history by pruning only; it never
-  costs a model call.
-* Token counting is a deliberately conservative heuristic (no tokenizer
-  dependency). Compacting slightly early is much safer than blowing the window.
+- Provider 返回上下文超长错误时，会自动压缩并重试一次。
+- 压缩切点多轮会话选 `user`，单轮长任务选 `assistant`。
+- 恢复 / fork 会话时只做恢复和剪枝，不额外消耗模型调用。
 
 ---
 
-## 10. Configuration reference
+## 12. 配置参考
 
-Precedence, highest first:
+配置优先级（从高到低）：
 
-```
---set key=value  >  MINICODE_* env  >  ./.minicode/config.yaml  >  global config  >  built-in defaults
+```text
+--set key=value  >  MINICODE_* 环境变量  >  ./.minicode/config.yaml  >  全局配置  >  内置默认值
 ```
 
 ```bash
-minicode config path      # where the config files live
-minicode config show      # the merged, effective config
-minicode config init      # write a starter file
+minicode config path      # 配置文件位置
+minicode config show      # 查看合并后的有效配置
+minicode config init      # 生成 starter 配置
 minicode --set agent.step_limit=50 --set ui.stream=false
-minicode --set ui.theme=emerald   # TUI palette: default | emerald | ocean | rose | minimal
+minicode --set ui.theme=emerald   # TUI 配色
 ```
 
-See [`config.example.yaml`](config.example.yaml) for every option with comments.
-Built-in defaults live in `src/minicode/config/default.yaml`.
+完整配置项见 [`config.example.yaml`](config.example.yaml)。
 
 ---
 
-## 11. Run the tests
+## 13. 运行测试
 
 ```bash
 pip install -e ".[dev]"
-pytest                      # unit + integration (E2E skips without credentials)
-pytest tests/unit -q
-pytest tests/integration -q
-pytest --cov=minicode -q
+pytest
 ```
 
-E2E runs against a real model and is skipped unless you provide one:
+代码检查：
 
 ```bash
-export MINICODE_E2E_API_KEY=...
-export MINICODE_E2E_BASE_URL=https://...
-export MINICODE_E2E_MODEL=...
-pytest tests/e2e -q -s
+python -m ruff check src tests scripts
+```
+
+当前状态：
+
+```text
+312 passed, 2 skipped
 ```
 
 ---
 
-## 12. End-to-end example
+## 14. 架构简介
 
-`tests/e2e/fixtures/buggy_project` is a tiny billing library with three
-deliberate bugs. A real run (see
-[`docs/e2e-transcript-example.log`](docs/e2e-transcript-example.log)):
-
-```
-$ minicode --yolo run "Run the test suite and fix the bugs in billing.py so all tests pass."
-
-→ bash   python -m pytest -q test_billing.py
-  7 failed, 16 passed
-→ read   billing.py
-→ edit   monthly_total   : months > MONTHS_PER_YEAR  →  >=
-→ edit   apply_coupon    : return amount - price     →  return 0
-→ edit   prorate         : days_used + 1             →  days_used
-→ bash   python -m pytest -q test_billing.py
-  23 passed
-```
-
-The three bugs:
-
-1. `monthly_total` — annual discount used `>` instead of `>=`, so a 12-month
-   term was never discounted.
-2. `apply_coupon` — a flat coupon larger than the price returned a positive
-   value instead of clamping to zero.
-3. `prorate` — an off-by-one charged `days_used + 1`.
-
-The agent is not told what the bugs are. It reads the tests, runs them,
-localises each failure and fixes the implementation.
-
----
-
-## 13. Architecture
-
-```
-CLI / TUI
-    ↓
-Session
-    ↓
-Agent  ┌──────────┼──────────┐
-       ↓          ↓          ↓
-    Context     Tools     Provider
-                              ↓
-                            Model
-```
-
-```
+```text
 src/minicode/
-  agent/        agent loop (extends mini-swe-agent), state, prompts
-  tools/        unified tool interface + registry + 7 builtins
-  providers/    OpenAI / Anthropic / LiteLLM / scripted
-  session/      persistence, fork, resume
-  permission/   allow / deny / ask
-  context/      truncation, pruning, compaction
-  config/       layered settings
-  project.py    repo ecosystem detection -> keeps minicode language-agnostic
-  ui/           EventSink + UIPort, Rich console, Textual front-end
-    console.py  Rich REPL (default)
-    textual/    Textual TUI (opt-in, `minicode tui`) — app.py / widgets.py / bridge.py / modals.py / theme.py
-  storage/      JSON store, platform paths
-  cli/          argparse entry point
+  agent/        Agent 循环、状态、提示词
+  tools/        工具接口 + Registry + 内置工具 + 截断
+  providers/    Provider 抽象 + OpenAI/Anthropic/LiteLLM 实现
+  session/      会话持久化（create / resume / fork / delete）
+  permission/   allow / deny / ask 权限策略
+  context/      截断 / 剪枝 / 压缩
+  config/       分层配置
+  storage/      原子 JSON 存储 + 平台路径
+  project.py    项目生态探测
+  ui/           REPL + Textual TUI
+  cli/          argparse 入口 + 斜杠命令
 ```
 
-Both front-ends implement the same two contracts, so the core knows neither:
+核心保证：
 
-```
-        cli/commands.py  ──UIPort──>  ui/console.py        (Rich REPL, default)
-                                      ui/textual/bridge.py (Textual TUI, opt-in)
-        agent  ──EventSink─────────────────^
-```
-
-Guarantees, each covered by tests:
-
-* the agent depends only on the `Provider` abstraction;
-* the agent never implements a tool — everything goes through the registry;
-* tools never import the UI;
-* sessions never hold a model reference;
-* permissions are a standalone module;
-* the core and the slash commands touch the UI only through `UIPort`;
-* no prompt, tool or default rule hard-codes a programming language.
+- Agent 不依赖具体 Provider
+- Agent 不直接实现工具
+- 工具不依赖 UI
+- Session 不持有 Model 引用
+- Permission 是独立模块
+- 核心与 UI 只通过 `UIPort` / `EventSink` 通信
 
 ---
 
-## 14. Related documents
+## 15. 相关文档
 
-| Document | Contents |
+| 文档 | 内容 |
 |---|---|
-| [`docs/TUI.md`](docs/TUI.md) | full walkthrough of the Textual TUI: layout, keys, model picker, themes, sessions |
-| [`MINISWE_DIFF.md`](MINISWE_DIFF.md) | what is reused from mini-swe-agent, what changed and why |
-| [`OPENCODE_GAP.md`](OPENCODE_GAP.md) | which OpenCode features exist, which are out of scope, and why |
-| [`config.example.yaml`](config.example.yaml) | fully commented configuration |
-| [`docs/e2e-transcript-example.log`](docs/e2e-transcript-example.log) | a real bug-fix run transcript |
-
----
-
-## License
-
-MIT
+| [`docs/TUI.md`](docs/TUI.md) | Textual TUI 完整使用指南 |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | 架构设计与模块职责 |
+| [`OPENCODE_GAP.md`](OPENCODE_GAP.md) | 与 OpenCode 的功能边界 |
+| [`MINISWE_DIFF.md`](MINISWE_DIFF.md) | 与 mini-swe-agent 的差异 |
+| [`config.example.yaml`](config.example.yaml) | 完整配置示例 |
