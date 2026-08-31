@@ -99,6 +99,11 @@ class OpenAICompatProvider(Provider):
                 converted.append({"role": "user", "content": content})
             elif role == "assistant":
                 entry: dict[str, Any] = {"role": "assistant", "content": content or ""}
+                # deepseek-v4-flash thinking mode: when previous assistant had reasoning_content
+                # and next turn is tool_calls, reasoning_content must be echoed back or API 400001
+                reasoning = extra.get("reasoning") or extra.get("reasoning_content") or ""
+                if reasoning and isinstance(reasoning, str):
+                    entry["reasoning_content"] = reasoning
                 calls = extra.get("tool_calls") or []
                 if calls:
                     entry["tool_calls"] = [
