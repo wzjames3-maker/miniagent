@@ -57,9 +57,11 @@ def project_config_file(cwd: str | Path | None = None) -> Path:
     return project_dir(cwd) / "config.yaml"
 
 
-def is_hidden(path: Path) -> bool:
-    """Whether any path component should be skipped by search tools."""
-    skip = {
+#: Directory names that search tools skip regardless of ``.gitignore``
+#: (VCS, virtualenvs, caches, vendored trees). Mirrored into ripgrep's
+#: exclude globs so the fast path and the pure-Python fallback agree.
+SKIP_DIR_NAMES: frozenset[str] = frozenset(
+    {
         ".git",
         ".hg",
         ".svn",
@@ -77,4 +79,9 @@ def is_hidden(path: Path) -> bool:
         ".idea",
         ".vscode",
     }
-    return any(part in skip for part in path.parts)
+)
+
+
+def is_hidden(path: Path) -> bool:
+    """Whether any path component should be skipped by search tools."""
+    return any(part in SKIP_DIR_NAMES for part in path.parts)

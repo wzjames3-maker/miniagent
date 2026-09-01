@@ -143,6 +143,18 @@ AGENT_INSTRUCTION_FILES: tuple[str, ...] = (
     ".github/copilot-instructions.md",
 )
 
+#: The two instruction files whose *contents* are injected into the system
+#: prompt (OpenCode-aligned). The others are only surfaced as "read me" hints:
+#: their formats are editor-specific and too unstructured to treat as rules.
+INSTRUCTION_FILES_LOADED: tuple[str, ...] = ("AGENTS.md", "CLAUDE.md")
+
+#: Per-file cap for injected instruction text (chars). Bounded so an oversized
+#: AGENTS.md can never bloat every single request - the system prompt is sent
+#: verbatim on each turn, and minicode's own AGENTS.md is far beyond this.
+MAX_INSTRUCTION_CHARS = 20_000
+
+_INSTRUCTION_TRUNCATED = "\n\n…[instructions truncated - read the file for the rest]…"
+
 #: Lockfile -> package manager, used to pick the right command for Node projects.
 _NODE_PACKAGE_MANAGERS: tuple[tuple[str, str], ...] = (
     ("bun.lockb", "bun"),
@@ -176,6 +188,9 @@ class ProjectProfile:
     ecosystems: tuple[Ecosystem, ...] = ()
     package_managers: tuple[str, ...] = ()
     instruction_files: tuple[str, ...] = ()
+    #: Rendered ``AGENTS.md`` / ``CLAUDE.md`` contents (capped), or "" when
+    #: there is nothing to inject into the system prompt.
+    instruction_block: str = ""
 
     # ---------------------------------------------------------------- #
     # derived views
@@ -248,7 +263,32 @@ def detect_project(root: str | Path) -> ProjectProfile:
         ecosystems=tuple(found.values()),
         package_managers=managers,
         instruction_files=instructions,
+        instruction_block=_load_instructions(path, instructions),
     )
+
+
+def _load_instructions(root: Path, files: tuple[str, ...]) -> str:
+    """Read ``AGENTS.md`` / ``CLAUDE.md`` contents for system-prompt injection.
+
+    Each file is capped at :data:`MAX_INSTRUCTION_CHARS`; unreadable files are
+    skipped silently (the ``instruction_files`` hint still tells the model to
+    read them itself). Returns "" when there is nothing to inject.
+    """
+    parts: list[str] = []
+    for name in INSTRUCTION_FILES_LOADED:
+        if name not in files:
+            continue
+        path = root / name
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if len(text) > MAX_INSTRUCTION_CHARS:
+            text = text[:MAX_INSTRUCTION_CHARS] + _INSTRUCTION_TRUNCATED
+        parts.append(text.strip())
+    if not parts:
+        return ""
+    return "\n\n".join(f"## {name}\n{part}" for name, part in zip(INSTRUCTION_FILES_LOADED, parts, strict=False) if part)
 
 
 def _by_name(name: str) -> Ecosystem:

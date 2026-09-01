@@ -15,7 +15,35 @@ from typing import Any, Protocol, runtime_checkable
 from minicode.permission.manager import AskReply, AskRequest
 from minicode.ui.events import EventSink
 
-__all__ = ["UIFrontEnd", "UIPort", "format_status_line"]
+__all__ = ["UIFrontEnd", "UIPort", "format_status_line", "cache_label", "fmt_tokens"]
+
+
+def fmt_tokens(count: int) -> str:
+    """Format a token count compactly: 500, 1.2K, 150K."""
+    count = int(count or 0)
+    if count < 1000:
+        return str(count)
+    if count < 100_000:
+        return f"{count / 1000:.1f}K"
+    return f"{count // 1000}K"
+
+
+def cache_label(stats: Mapping[str, Any]) -> str | None:
+    """Short status-line fragment for prompt-cache tokens, or ``None``.
+
+    First number is cache *reads* (tokens served from the provider cache), the
+    second cache *writes* (cache creation; Anthropic reports these, automatic
+    prefix caches like OpenAI/DeepSeek do not).
+    """
+    read = int(stats.get("cache_read_tokens", 0) or 0)
+    write = int(stats.get("cache_write_tokens", 0) or 0)
+    if not read and not write:
+        return None
+    if read and write:
+        return f"cache {fmt_tokens(read)}r/{fmt_tokens(write)}w"
+    if read:
+        return f"cache {fmt_tokens(read)}"
+    return f"cache w:{fmt_tokens(write)}"
 
 
 @runtime_checkable
@@ -66,6 +94,9 @@ def format_status_line(stats: Mapping[str, Any]) -> str:
         f"ctx {tokens}t ({ratio:.0%})",
         f"${float(stats.get('cost', 0.0) or 0.0):.3f}",
     ]
+    label = cache_label(stats)
+    if label:
+        parts.insert(4, label)
     if stats.get("compactions"):
         parts.append(f"compacted x{stats['compactions']}")
     return " | ".join(parts)

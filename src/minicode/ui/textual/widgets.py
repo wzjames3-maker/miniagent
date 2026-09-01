@@ -23,6 +23,7 @@ from textual.widgets import Button, OptionList, RichLog, Static, TextArea
 from textual.widgets.option_list import Option
 
 from minicode.session.models import Session
+from minicode.ui.port import cache_label, fmt_tokens
 from minicode.ui.render import format_arguments
 from minicode.ui.textual.theme import context_bar, context_style
 
@@ -152,21 +153,12 @@ class StreamArea(Static):
     """Live text while the model streams; cleared once the turn settles."""
 
 
-def _fmt_tokens(count: int) -> str:
-    """Format a token count compactly: 500, 1.2K, 150K."""
-    count = int(count or 0)
-    if count < 1000:
-        return str(count)
-    if count < 100_000:
-        return f"{count / 1000:.1f}K"
-    return f"{count // 1000}K"
-
-
 class ContextBar(Static):
     """One-line status bar, ported from pydantic-deepagents.
 
-    Shows cost · in/out tokens · context usage · message count · model in a
-    single row. It is the "how is the run going" glance line above the input.
+    Shows cost · in/out tokens · prompt-cache tokens · context usage · message
+    count · model in a single row. It is the "how is the run going" glance line
+    above the input.
     """
 
     def show_stats(self, stats: dict[str, Any]) -> None:
@@ -183,7 +175,10 @@ class ContextBar(Static):
             parts.append((f"${cost:.2f}", "bold"))
         total = tokens_in + tokens_out
         if total > 0:
-            parts.append((f"in:{_fmt_tokens(tokens_in)} out:{_fmt_tokens(tokens_out)}", "dim"))
+            parts.append((f"in:{fmt_tokens(tokens_in)} out:{fmt_tokens(tokens_out)}", "dim"))
+        label = cache_label(stats)
+        if label:
+            parts.append((label, "dim"))
         if ratio > 0:
             bar = f"{context_bar(ratio)} {ratio:>3.0%}"
             parts.append((bar, context_style(ratio)))

@@ -302,17 +302,34 @@ class OpenAICompatProvider(Provider):
     # ------------------------------------------------------------------ #
     @staticmethod
     def _usage(usage: Any) -> Usage:
+        """Map provider usage onto :class:`Usage`, incl. prompt-cache tokens.
+
+        OpenAI reports cache reads inside ``prompt_tokens_details.cached_tokens``;
+        DeepSeek reports ``prompt_cache_hit_tokens`` / ``prompt_cache_miss_tokens``
+        at the top level of ``usage``. Both are accepted. Cache *writes* are only
+        reported by Anthropic (``cache_creation_input_tokens``), so they stay 0
+        here - the automatic-cache providers never charge a separate write.
+        """
         if usage is None:
             return Usage()
         details = getattr(usage, "prompt_tokens_details", None) or {}
         cached = (
             getattr(details, "cached_tokens", None) if not isinstance(details, dict) else details.get("cached_tokens")
         )
+        if cached is None:
+            cached = OpenAICompatProvider._field(usage, "prompt_cache_hit_tokens")
         return Usage(
             input_tokens=int(getattr(usage, "prompt_tokens", 0) or 0),
             output_tokens=int(getattr(usage, "completion_tokens", 0) or 0),
             cache_read_tokens=int(cached or 0),
         )
+
+    @staticmethod
+    def _field(obj: Any, name: str) -> Any:
+        """Read a usage field from an SDK object or a plain dict."""
+        if isinstance(obj, Mapping):
+            return obj.get(name)
+        return getattr(obj, name, None)
 
     def _map_error(self, exc: Exception) -> Exception:
         import openai

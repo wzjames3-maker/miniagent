@@ -67,6 +67,59 @@ def test_agent_instruction_files_are_surfaced(tmp_path):
     assert "AGENTS.md" in profile.describe()
 
 
+def test_agent_instruction_contents_are_loaded(tmp_path):
+    """AGENTS.md / CLAUDE.md contents are injected (OpenCode-aligned)."""
+    (tmp_path / "AGENTS.md").write_text("# always use tabs\n", encoding="utf-8")
+    (tmp_path / "CLAUDE.md").write_text("# never touch tests\n", encoding="utf-8")
+    profile = detect_project(tmp_path)
+    block = profile.instruction_block
+    assert "## AGENTS.md" in block
+    assert "always use tabs" in block
+    assert "## CLAUDE.md" in block
+    assert "never touch tests" in block
+
+
+def test_agent_instruction_block_is_empty_for_mention_only_files(tmp_path):
+    """The other instruction files are surfaced as hints, not injected."""
+    (tmp_path / ".cursorrules").write_text("x", encoding="utf-8")
+    profile = detect_project(tmp_path)
+    assert profile.instruction_files == (".cursorrules",)
+    assert profile.instruction_block == ""
+
+
+def test_agent_instructions_are_truncated_when_oversized(tmp_path):
+    from minicode.project import MAX_INSTRUCTION_CHARS
+
+    (tmp_path / "AGENTS.md").write_text("x" * (MAX_INSTRUCTION_CHARS + 5000), encoding="utf-8")
+    block = detect_project(tmp_path).instruction_block
+    assert len(block) <= MAX_INSTRUCTION_CHARS + 200
+    assert "truncated" in block
+
+
+def test_system_template_renders_instructions_conditionally():
+    from jinja2 import StrictUndefined, Template
+
+    from minicode.agent.prompts import SYSTEM_TEMPLATE
+
+    base = dict(
+        cwd="/tmp",
+        os_name="Linux",
+        date="2026-01-01",
+        provider="p",
+        model="m",
+        project="- no build manifest",
+        tools_list="- read",
+        project_instructions="",
+    )
+    empty = Template(SYSTEM_TEMPLATE, undefined=StrictUndefined).render(**base)
+    assert "Project instructions" not in empty
+    full = Template(SYSTEM_TEMPLATE, undefined=StrictUndefined).render(
+        **{**base, "project_instructions": "## AGENTS.md\nrules"}
+    )
+    assert "Project instructions" in full
+    assert "## AGENTS.md\nrules" in full
+
+
 def test_empty_directory_yields_no_commands_but_still_describes(tmp_path):
     profile = detect_project(tmp_path)
     assert profile.ecosystems == ()

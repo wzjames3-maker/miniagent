@@ -22,6 +22,7 @@
 | 最大步数限制 | ✅ | `agent.step_limit`，另有 cost / wall-time 限制 |
 | Doom Loop 检测 | ✅ | 连续 N 次相同调用即注入中断消息 |
 | Agent 状态记录 | ✅ | `agent/state.py`，步数 / token / 错误数 / 压缩次数 |
+| AGENTS.md / CLAUDE.md 规则 | ✅ | `detect_project` 读取根目录 `AGENTS.md` / `CLAUDE.md` 内容注入 system prompt（单文件 20k 字符截断，session 内字节稳定、不伤前缀缓存）；`.cursorrules` 等仅提示模型自读。**差异**：OpenCode 按目录作用域加载嵌套 AGENTS.md，且支持规则语法，minicode 目前只做根目录全文注入 |
 
 ### 1.2 Tools
 
@@ -31,8 +32,8 @@
 | `write` | ✅ | 自动建父目录、覆写时给出 diff |
 | `edit` | ✅ | 要求唯一匹配（可 `replace_all`），与 OpenCode 一致 |
 | `apply_patch` | ✅ | 同款 `*** Begin Patch` 格式，支持 add/update/delete/move |
-| `glob` | ✅ | 纯 Python 实现，跳过隐藏目录与二进制 |
-| `grep` | ✅ | 纯 Python 正则搜索，不依赖 ripgrep |
+| `glob` | ✅ | 标准库 walker（同 pydantic-ai 的取舍：glob 语义与 mtime 排序在 Python 侧更稳，不走 rg 的多深度语义差异） |
+| `grep` | ✅ | **ripgrep 快速通道**（同 pydantic-ai / OpenCode：原生匹配器快一个量级、尊重 `.gitignore`），无 `rg` 时自动回落纯 Python；`MINICODE_NO_RIPGREP=1` 强制回落。两路行为一致（跳过隐藏/依赖目录、二进制、新文件优先、上限截断） |
 | `bash` | ✅ | 复用 mini 的 `LocalEnvironment`（超时 / 进程组 kill） |
 | Tool Registry | ✅ | `register` / `subset` / `load_module` 扩展点 |
 | 统一输入输出协议 | ✅ | JSON Schema + `ToolResult(title, output, metadata, error)` |
@@ -100,6 +101,25 @@
 | History Compaction | ✅ 摘要压缩旧历史 + 保留近期原文（tail budget 驱动） |
 | 压缩后继续执行 | ✅ 压缩消息注入后 agent 无感知地继续 |
 | Session 恢复后的上下文重建 | ✅ `rebuild()`：恢复 + 剪枝，**不调用模型** |
+| 前缀缓存统计 | ✅ OpenAI `cached_tokens` / DeepSeek `prompt_cache_hit_tokens` / Anthropic `cache_read_input_tokens` 归一化进 `Usage`，状态栏 `cache 12.3K`、`/status` 展示累计值 |
+| 两次压缩间前缀字节稳定 | ✅ `prepare()` 在不需要压缩时**不触碰历史**；剪枝只在压缩内发生（OpenCode 对齐：中途改写历史 = 打断自动前缀缓存） |
+
+**缓存策略（服务商无关，与 OpenCode 一致）**：各大 AI 服务商的提示词缓存
+机制各不相同（OpenAI/DeepSeek 系自动前缀缓存、Anthropic 显式断点；激活阈值、
+窗口与计费规则各异，实测不同端点甚至同一端点不同时段表现都不同），但机制
+都建立在一个共同前提上——**请求的前缀必须与之前缓存过的前缀字节一致**。
+所以 minicode 只做三件通用的事，不做任何服务商特调：
+
+1. **system prompt 会话内只渲染一次**，字节级稳定（AGENTS.md / CLAUDE.md
+   注入也发生在首次渲染时，一并固化）；
+2. **对话严格尾追加**，两次压缩之间绝不改写历史——剪枝只作为压缩的第一
+   阶段运行（压缩是唯一允许的"缓存重置点"）；
+3. **缓存命中可见**：`cache 12.3K` 上状态栏，`/status` 看累计，命中是否发生
+   一眼可知，服务商行为异常时立刻暴露。
+
+这三点对自动前缀缓存类（OpenAI/DeepSeek 系）与显式断点类（Anthropic，断点
+注入为将来扩展）同时成立。策略正确，则任何服务商下的缓存行为都不会被
+minicode 自身破坏；具体收益取决于服务商实现，不属于本项目的调参范围。
 
 ### 1.7 TUI / CLI
 
@@ -147,6 +167,7 @@
 | Todo 列表 | 未提供 | 模型在上下文内自行跟踪；可由用户通过自定义工具扩展 |
 | Cost 追踪 | 简化 | 有 `cost_limit` 与累计，但依赖 provider 是否上报价格；未内置价格表 |
 | Undo / 快照 | 未提供 | 依赖 git；agent 被明确禁止执行破坏性 git 命令 |
+| Anthropic 显式缓存断点 | 未提供 | `cache_control` 断点需按模型变化维护，暂未实现；后续可加在 `anthropic_compat._payload` |
 
 ---
 

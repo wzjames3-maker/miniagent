@@ -20,6 +20,10 @@ default_model: deepseek-v4-flash
 #   scripted          deterministic stand-in used by the test-suite
 #
 # You can also point `type` at your own class: "my_package.my_module:MyProvider"
+#
+# Prompt caching is automatic on OpenAI/DeepSeek (server-side, prefix-based):
+# nothing to configure. Cache read/write tokens are shown in the status bar
+# (`cache 12.3K`) and in `/status`.
 providers:
   # An OpenAI-compatible endpoint.
   sensenova:
@@ -110,7 +114,10 @@ context:
   max_tokens: 120000              # soft ceiling for the history
   auto_compact: true
   compact_threshold: 0.85         # compact at 85% of max_tokens
-  prune: true                     # drop old tool output before summarising
+  prune: true                     # drop old tool output during compaction
+  # Cache discipline: between compactions the history is kept byte-identical so
+  # the provider's prefix cache (OpenAI/DeepSeek automatic, Anthropic explicit)
+  # keeps hitting. Pruning only runs as part of a compaction, never mid-session.
   prune_protect_tokens: 40000     # keep this much recent tool output intact
   preserve_recent_tokens: 20000   # budget for the verbatim tail
   tail_turns: null                # hard cap on preserved turns (null = use budget)

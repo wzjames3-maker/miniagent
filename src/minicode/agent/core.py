@@ -177,6 +177,7 @@ class CodingAgent(DefaultAgent):
             os_name=f"{platform.system()} {platform.release()}",
             date=datetime.now().strftime("%Y-%m-%d"),
             project=self.project.describe(),
+            project_instructions=self.project.instruction_block,
             **kwargs,
         )
 
@@ -192,6 +193,8 @@ class CodingAgent(DefaultAgent):
                 usage = (message.get("extra") or {}).get("usage") or {}
                 self.state.input_tokens += int(usage.get("input_tokens", 0) or 0)
                 self.state.output_tokens += int(usage.get("output_tokens", 0) or 0)
+                self.state.cache_read_tokens += int(usage.get("cache_read_tokens", 0) or 0)
+                self.state.cache_write_tokens += int(usage.get("cache_write_tokens", 0) or 0)
         if self.session is not None:
             self.sessions.extend_messages(self.session, messages)
             if any(m.get("role") == "user" for m in messages):
@@ -553,6 +556,8 @@ class CodingAgent(DefaultAgent):
             "cost": round(self.cost, 4),
             "tokens_in": self.state.input_tokens,
             "tokens_out": self.state.output_tokens,
+            "cache_read_tokens": self.state.cache_read_tokens,
+            "cache_write_tokens": self.state.cache_write_tokens,
             "tool_calls": self.state.tool_calls,
             "tool_errors": self.state.tool_errors,
             "compactions": self.state.compactions,

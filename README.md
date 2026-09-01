@@ -42,8 +42,11 @@
 | 💬 会话管理 | 自动保存、恢复、fork、按项目隔离、批量删除 |
 | 🔐 权限系统 | `allow` / `deny` / `ask` 三级策略；非交互环境 fail-closed |
 | 📦 上下文管理 | 截断、剪枝、压缩，长任务不爆上下文 |
+| ⚡ 缓存对齐 | 前缀缓存统计上状态栏（`cache 12.3K`）；两次压缩之间历史字节级稳定，保住 OpenAI / DeepSeek 自动前缀缓存 |
+| 📋 项目指令 | 自动读取 `AGENTS.md` / `CLAUDE.md` 内容注入 system prompt（单文件 20k 字符截断，OpenCode 对齐） |
+| ⚡ 快速搜索 | `grep` 优先走 ripgrep（原生匹配器 + `.gitignore`），无 `rg` 自动回落纯 Python |
 | 🧩 可扩展 | 自定义工具、自定义 Provider、自定义命令 |
-| 🧪 测试完善 | 单元 + 集成 + TUI 测试，当前 `312 passed / 2 skipped` |
+| 🧪 测试完善 | 单元 + 集成 + TUI 测试，当前 `398 passed / 2 skipped` |
 
 ---
 
@@ -216,6 +219,13 @@ DeepSeek-V4/R1、o-series、QwQ 等模型会在 `reasoning_content` 中输出思
 
 - 在终端里用灰色 "thinking…" 块实时展示推理过程；
 - 如果模型只输出了思考、没有可见回答，会自动提示模型补一次正式回答。
+
+### 提示词缓存（Prompt Caching）
+
+OpenAI / DeepSeek 等对请求**前缀**做自动缓存（服务端行为，无需配置）；minicode 与之对齐的两件事：
+
+- **缓存统计可见**：状态栏显示 `cache 12.3K`（读 / 写），完整数字在 `/status`、`/session` 可查；
+- **前缀保护**：两次压缩之间历史严格保持字节一致，绝不中途改写旧消息（剪枝只在压缩时发生），让自动前缀缓存持续命中。
 
 ### 速率限制
 
@@ -404,9 +414,11 @@ minicode --yolo run "..."
 | `write` | 创建或覆盖文件，自动创建父目录，显示 diff |
 | `edit` | 精确替换文本；必须唯一匹配，除非 `replace_all` |
 | `apply_patch` | 一次调用完成多文件新增 / 修改 / 删除 / 移动 |
-| `glob` | 按模式查找文件 |
-| `grep` | 正则搜索文件内容 |
+| `glob` | 按模式查找文件（标准库实现，跳过隐藏 / 依赖目录） |
+| `grep` | 正则搜索文件内容；**优先 ripgrep**（快、尊重 `.gitignore`），无 `rg` 时自动回落纯 Python 实现 |
 | `bash` | 执行 Shell 命令（测试、构建、git 等） |
+
+> `grep` 的两条实现路径行为一致（跳过隐藏 / 依赖目录、跳过二进制、新文件优先、结果上限），可放心切换。若因某种原因想强制使用纯 Python 实现，设置环境变量 `MINICODE_NO_RIPGREP=1` 即可。
 
 所有工具遵循统一协议：
 
@@ -453,6 +465,8 @@ tools:
 1. **截断**：每个工具输出设上限，超出部分写盘。
 2. **剪枝**：删除旧工具输出，保留调用本身；最近一步始终保护。
 3. **压缩**：把旧对话摘要成一条消息，最近内容按 token 预算保留原文。
+
+**缓存纪律（OpenCode 对齐）**：两次压缩之间历史消息保持字节级一致，剪枝只在压缩发生时执行、绝不单独中途改写历史——这样 OpenAI/DeepSeek 的自动前缀缓存能持续命中（此前每次查询前都会顺手剪枝，等于隔几轮就把缓存前缀打断一次）。压缩会替换头部历史，此时前缀必然变化，属于预期内的"缓存重置点"。
 
 ```yaml
 context:
@@ -511,7 +525,7 @@ python -m ruff check src tests scripts
 当前状态：
 
 ```text
-312 passed, 2 skipped
+398 passed, 2 skipped
 ```
 
 ---
@@ -520,16 +534,16 @@ python -m ruff check src tests scripts
 
 ```text
 src/minicode/
-  agent/        Agent 循环、状态、提示词
-  tools/        工具接口 + Registry + 内置工具 + 截断
-  providers/    Provider 抽象 + OpenAI/Anthropic/LiteLLM 实现
+  agent/        Agent 循环、状态、提示词（含 AGENTS.md 指令块、缓存计数）
+  tools/        工具接口 + Registry + 内置工具 + 截断（grep 优先 ripgrep）
+  providers/    Provider 抽象 + OpenAI/Anthropic/LiteLLM 实现（含缓存 token 解析）
   session/      会话持久化（create / resume / fork / delete）
   permission/   allow / deny / ask 权限策略
-  context/      截断 / 剪枝 / 压缩
+  context/      截断 / 剪枝 / 压缩（缓存纪律：两次压缩间历史字节一致）
   config/       分层配置
-  storage/      原子 JSON 存储 + 平台路径
-  project.py    项目生态探测
-  ui/           REPL + Textual TUI
+  storage/      原子 JSON 存储 + 平台路径（SKIP_DIR_NAMES 单源）
+  project.py    项目生态探测 + AGENTS.md/CLAUDE.md 指令注入
+  ui/           REPL + Textual TUI（状态栏含 cache 命中统计）
   cli/          argparse 入口 + 斜杠命令
 ```
 
@@ -549,6 +563,7 @@ src/minicode/
 | 文档 | 内容 |
 |---|---|
 | [`docs/TUI.md`](docs/TUI.md) | Textual TUI 完整使用指南 |
+| [`docs/tutorial/`](docs/tutorial/) | 从零到改代码的 11 章教程 + advanced 专题（缓存感知、重试限流） |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | 架构设计与模块职责 |
 | [`OPENCODE_GAP.md`](OPENCODE_GAP.md) | 与 OpenCode 的功能边界 |
 | [`MINISWE_DIFF.md`](MINISWE_DIFF.md) | 与 mini-swe-agent 的差异 |

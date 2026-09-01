@@ -7,16 +7,16 @@
 
 ```
 src/minicode/
-  agent/        Agent 循环（继承 mini DefaultAgent）+ 状态 + 提示词
-  tools/        统一 Tool 接口 + Registry + 7 内置工具 + 截断
-  providers/    统一 Provider 抽象（OpenAI/Anthropic/LiteLLM/Scripted）+ 注册表
+  agent/        Agent 循环（继承 mini DefaultAgent）+ 状态 + 提示词（+ AGENTS.md 指令块 + cache 计数）
+  tools/        统一 Tool 接口 + Registry + 7 内置工具 + 截断（grep 优先 ripgrep）
+  providers/    统一 Provider 抽象（OpenAI/Anthropic/LiteLLM/Scripted，含 DeepSeek prompt_cache_hit_tokens）+ 注册表
   session/      持久化 Session（create/resume/fork/delete）+ 模型无关
   permission/   独立策略层（allow/deny/ask，三级 tool/command/path）
-  context/      消息历史 + Token 预算 + 截断/剪枝/压缩 + 重建
+  context/      消息历史 + Token 预算 + 截断/剪枝/压缩 + 重建（缓存纪律：两次压缩间历史字节一致）
   config/       五层层叠配置（builtin < global < project < env < --set）
-  storage/      原子 JSON 文档存储 + 平台路径
-  project.py    仓库生态探测（语言 / 测试 / 校验命令）—— 语言无关的唯一真相源
-  ui/           EventSink + UIPort 抽象 + Rich 控制台 + Textual 全屏前端
+  storage/      原子 JSON 文档存储 + 平台路径（SKIP_DIR_NAMES 单源）
+  project.py    仓库生态探测（语言 / 测试 / 校验命令）+ AGENTS.md/CLAUDE.md 指令块（20k 截断）—— 语言无关的唯一真相源
+  ui/           EventSink + UIPort 抽象（+ cache_label/fmt_tokens）+ Rich 控制台 + Textual 全屏前端
   cli/          argparse 入口 + 斜杠命令分发
   errors.py     统一错误层级（Config/Provider/Tool/Permission/Session/Context/CLI）
 ```
@@ -93,7 +93,9 @@ run(task)  # 首次 super().run()，续跑 _run_loop()
   _finish() # 无 tool_call 且 content 为空时 nudge 一次，否则 Submitted 退出
 ```
 
-限额：`step_limit/cost_limit/wall_time` 复用 `DefaultAgent`；`doom_loop_threshold` 连续相同指纹中断；`max_consecutive_format_errors` 复用 mini。
+提示词：`src/minicode/agent/prompts.py:7` 的 `SYSTEM_TEMPLATE` 含 `{{ project }}` 与 `{{ project_instructions }}`（`AGENTS.md`/`CLAUDE.md` 注入，单文件 20k 截断，`project.py:146` 的 `INSTRUCTION_FILES_LOADED`）。
+
+限额与令牌：`step_limit/cost_limit/wall_time` 复用 `DefaultAgent`；`doom_loop_threshold` 连续相同指纹中断；`max_consecutive_format_errors` 复用 mini；`AgentState` 含 `input/output/cache_read/cache_write` 四计数（`src/minicode/agent/state.py:21`，`core.py:192` 累加 `usage.cache_read/write_tokens`，`core.py:556` 入 `stats` 供状态栏 `cache_label`）。
 
 ## 4. Tool System
 
@@ -114,6 +116,8 @@ class BaseTool:
 
 截断：双限 `2000 lines / 51200 bytes` `src/minicode/tools/truncate.py:48` 超限写盘返回 `output_path`，由 `ContextManager.truncate_tool_output` 统一入口，`ToolEnvironment` 注入 `ctx.truncate` 供工具调用。`write/edit/apply_patch` 已统一走该路径，避免上下文撑爆。
 
+搜索：`glob` 仍走标准库递归与 `SKIP_DIR_NAMES` 过滤（`src/minicode/storage/paths.py:60`）；`grep` 在 `src/minicode/tools/search_tools.py:1` 优先 `ripgrep`（`rg --hidden --max-filesize` + `SKIP_DIR_NAMES`/`_BINARY_SKIP_SUFFIXES` 互为 `-g !` 排除，`MINICODE_NO_RIPGREP=1` 可强回纯 Python），无 `rg` 或目录非文件时回落纯 Python，二者契约一致（跳过隐藏/依赖/二进制、新文件优先、200 条上限、60s 超时）。
+
 ## 5. Provider System
 
 抽象 `src/minicode/providers/base.py:221`
@@ -124,7 +128,7 @@ class Provider(ABC):
     # 同时实现 mini Model 协议: query/format_message/format_observation_messages/get_template_vars/serialize
 ```
 
-归一化形状：`ToolCall` `AssistantMessage( content, tool_calls, usage, reasoning )` `StreamEvent`；`tool_schema_to_openai/anthropic` 转换；`format_tool_results` 配对工具结果。
+归一化形状：`ToolCall` `AssistantMessage( content, tool_calls, usage, reasoning )` `StreamEvent`；`tool_schema_to_openai/anthropic` 转换；`format_tool_results` 配对工具结果。`Usage` 含 `cache_read/write_tokens`（`src/minicode/providers/base.py:88`），`OpenAICompat._usage:303` 兼容 `prompt_tokens_details.cached_tokens` 与 DeepSeek 的 `prompt_cache_hit_tokens`，`Anthropic` 取 `cache_read_input_tokens`/`cache_creation_input_tokens`。
 
 重试/节流统一在基类 `src/minicode/providers/base.py:321`：`_throttle`（`min_request_interval`）、`_retry_after_seconds`（`Retry-After` 优先）、`_with_retries`（指数退避 `retry_delay/retry_max_delay`，`ContextLengthError/AuthenticationError` 不重试）。`OpenAICompat` `src/minicode/providers/openai_compat.py:69` 与 `AnthropicCompat` `src/minicode/providers/anthropic_compat.py:34` 共享该逻辑，差异仅 `_convert_messages/_payload/_run_blocking/_run_stream/_map_error`。
 
@@ -138,13 +142,13 @@ class Provider(ABC):
 
 ## 7. Context System
 
-三机制 `src/minicode/context/manager.py:1`
+三机制 `src/minicode/context/manager.py:1`（**缓存纪律**：见模块 docstring，两次压缩间历史字节级稳定，剪枝只在压缩时发生——否则会打断 OpenAI/DeepSeek 的自动前缀缓存，`prepare:309` 因此不再单独剪枝）
 
 1. **截断** `truncate_tool_output:112` → `tools/truncate.py:48` 头尾各半取，超限写盘。
-2. **剪枝** `prune_tool_outputs:131` 倒序跳过 `prune_protect_tokens(40k)` 尾部与末轮 assistant，释放达到 `prune_minimum_tokens(20k)` 才重写，标记 `pruned` / `compacted` 避免重复。
+2. **剪枝** `prune_tool_outputs:131` 倒序跳过 `prune_protect_tokens(40k)` 尾部与末轮 assistant，释放达到 `prune_minimum_tokens(20k)` 才重写，标记 `pruned` / `compacted` 避免重复。**仅由 `compact:224` 与 `rebuild:323` 调用，永不在两次压缩间单独执行。**
 3. **压缩** `compact:224` 选切点 `_select_split:196`（多轮按 `user`，单轮长按 `assistant`），`budget preserve_recent_tokens(20k)` 或 `tail_turns` 硬截，`_summarize:272` 调模型或 `fallback_summary:281` 抽取，注入 `<compaction>` 消息。
 
-`prepare:309` 按 `needs_compaction(0.85*max_tokens)` 阈值触发压缩否则仅剪枝；`rebuild:323` 恢复时仅剪枝不清摘要（不耗模型）；`tokens.py:29` 启发式 `CJK 1.3 / ASCII 3.6 chars/token` 略保守；`estimate_messages_tokens` 含 `tool_call 12 token` 开销。
+`prepare:309` 按 `needs_compaction(0.85*max_tokens)` 阈值触发压缩否则**不触碰历史**（`pruned_tokens=0`，`after=before`），以保前缀缓存；`rebuild:323` 恢复时仅剪枝不清摘要（不耗模型）；`tokens.py:29` 启发式 `CJK 1.3 / ASCII 3.6 chars/token` 略保守；`estimate_messages_tokens` 含 `tool_call 12 token` 开销。
 
 ## 8. Permission System
 
@@ -163,6 +167,8 @@ Agent -> sink.on_stream_event(text_delta/reasoning_delta/tool_call_*)
      -> sink.on_tool_start / on_tool_result
      -> sink.on_compaction / on_error / on_turn_start / on_turn_end
 ```
+
+状态栏：`src/minicode/ui/port.py:44` 的 `format_status_line` + `cache_label`/`fmt_tokens` 渲染 `cache 12.3Kr/4.5Kw`，`src/minicode/ui/textual/widgets.py:153` 的 `ContextBar` 同款（`in/out + cache + ctx bar + ratio`）。
 
 两个前端实现同一套契约，**核心不认识任何一个**：
 
@@ -229,10 +235,13 @@ detect_project(root) -> ProjectProfile
     └─ lint_commands    ruff / eslint / go vet / cargo clippy / rubocop ...
 ```
 
-`ProjectProfile` 同时喂给三处，避免各自演化：
+`ProjectProfile` 同时喂给四处，避免各自演化：
 
 1. **系统提示词** —— `agent/prompts.py` 注入 `Project` 段，并明确"不要假设语言，用这个仓库真正在用的命令"。
-2. **权限白名单** —— `permission/manager.py:default_bash_rules` 由 `ECOSYSTEMS` 生成测试/校验命令模式，所以任何语言的测试命令都自动免询问。
-3. **配置生成** —— `config/settings.py:render_permission_yaml` 用同一份常量渲染 `default.yaml`、内嵌兜底配置和 `minicode config init`，三份不可能分叉。
+2. **项目指令** —— `agent/prompts.py:20` 的 `{{ project_instructions }}` 注入 `AGENTS.md`/`CLAUDE.md` 原文（`project.py:146` 的 `INSTRUCTION_FILES_LOADED`，单文件 20k 截断，`project.py:188` 的 `instruction_block`）。
+3. **权限白名单** —— `permission/manager.py:default_bash_rules` 由 `ECOSYSTEMS` 生成测试/校验命令模式，所以任何语言的测试命令都自动免询问。
+4. **配置生成** —— `config/settings.py:render_permission_yaml` 用同一份常量渲染 `default.yaml`、内嵌兜底配置和 `minicode config init`，三份不可能分叉。
 
-`project.py` 是**叶子模块**（不 import 任何 minicode 代码），否则 `permission → agent → context → permission` 会成环。 工厂耦合 | `Effect.Layer` 分层装配 `ToolRegistry/Config/Permission` | `InteractiveApp` 保留 ` _build_tools/_permission_rules` 等小工厂，职责已在 `cli/app.py:60` 拆分，未来可进一步提为 `cli/factory.py` |
+`project.py` 是**叶子模块**（不 import 任何 minicode 代码），否则 `permission → agent → context → permission` 会成环。`ProjectProfile.instruction_block` 虽新增但仍为纯数据，不引业务。 工厂耦合 | `Effect.Layer` 分层装配 `ToolRegistry/Config/Permission` | `InteractiveApp` 保留 ` _build_tools/_permission_rules` 等小工厂，职责已在 `cli/app.py:60` 拆分，未来可进一步提为 `cli/factory.py` |
+
+`storage` 单源：`src/minicode/storage/paths.py:60` 的 `SKIP_DIR_NAMES`（`frozenset`）同时被 `tools/search_tools.py:1` 的 `glob`（`is_hidden`）与 `grep`（`_rg_excludes` 的 `-g !`）共享，保证纯 Python 回落与 ripgrep 快径行为一致。

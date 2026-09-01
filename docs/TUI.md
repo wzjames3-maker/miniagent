@@ -25,7 +25,7 @@ diff 高亮、状态栏、会话脚注、模型选择弹窗、多套主题）移
 │              │  system                                         │
 │              │    /help ...                                    │
 ├──────────────┼───────────────────────────────────────────────┤
-│              │  $0.01  in:1.5K out:812  ▓▓░░ 25%  6 msgs  model│  status
+│              │  $0.01  in:1.5K out:812  cache 4.1K  ▓▓░░ 25%  6 msgs  model│  status
 │              │  openai · gpt-4o-mini   ~/workspace            │  footer
 │              │  ↑ history  / commands  Shift+Enter  Enter  Esc│  hints
 │              │  ┌─────────────────────────────────────────┐   │
@@ -39,7 +39,7 @@ diff 高亮、状态栏、会话脚注、模型选择弹窗、多套主题）移
 | 左侧会话栏 | 只显示当前项目的会话，按 Today / Yesterday / Older 分组，点击切换，`＋ New session` 开新会话，高亮后按 `d` 删除 |
 | 消息流 | 用户消息 / 助手 Markdown / 可折叠 tool call / 系统行 |
 | thinking 面板 | 推理模型的思考过程，实时显示、结束后折叠成一行 |
-| 状态栏 | cost · in/out tokens · context 用量 · 消息数 · 模型 · 压缩次数 |
+| 状态栏 | cost · in/out tokens · prompt-cache tokens · context 用量 · 消息数 · 模型 · 压缩次数 |
 | 会话脚注 | provider · model · workspace |
 | 提示条 | 输入框快捷键提示，运行中显示 Esc 可中断 |
 | 输入框 | 多行输入 + `/` 命令弹窗 |

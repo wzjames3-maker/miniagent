@@ -99,6 +99,8 @@ context:
   max_tokens: 120000
   auto_compact: true
   compact_threshold: 0.85
+  # Rewrites old tool output only during a compaction - never between model
+  # calls, so the provider's prefix cache keeps hitting (OpenCode-aligned).
   prune: true
   prune_protect_tokens: 40000
   prune_minimum_tokens: 20000

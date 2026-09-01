@@ -205,6 +205,17 @@ def test_openai_provider_maps_usage():
     assert message.usage.input_tokens == 100
     assert message.usage.output_tokens == 20
     assert message.usage.cache_read_tokens == 5
+    assert message.usage.cache_write_tokens == 0  # automatic-cache providers never report writes
+
+
+def test_openai_provider_maps_deepseek_cache_tokens():
+    """DeepSeek reports prompt-cache tokens at the top level of `usage`."""
+    response = _openai_response(content="x")
+    response.usage.prompt_cache_hit_tokens = 42
+    response.usage.prompt_tokens_details = None
+    provider = _make_provider(response)
+    message = provider.generate([{"role": "user", "content": "go"}], None)
+    assert message.usage.cache_read_tokens == 42
 
 
 def test_streaming_accumulates_fragments():

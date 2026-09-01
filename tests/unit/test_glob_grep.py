@@ -173,3 +173,81 @@ def test_search_tools_are_read_only_permissions():
     registry = build_default_registry()
     assert registry.get("glob").permission == "glob"
     assert registry.get("grep").permission == "grep"
+
+
+# --------------------------------------------------------------------------- #
+# ripgrep fast path
+# --------------------------------------------------------------------------- #
+def _fake_rg(lines, exit_code=0, stderr="", timed_out=False):
+    from minicode.tools import search_tools
+
+    def fake_run_rg(args, max_lines, timeout=60.0, cwd=None):
+        fake_run_rg.calls = {"args": list(args), "cwd": str(cwd)}
+        return list(lines), exit_code, stderr, timed_out
+
+    fake_run_rg.calls = {}
+    return search_tools, fake_run_rg
+
+
+def test_grep_uses_ripgrep_fast_path(monkeypatch, registry, ctx, tree):
+    st, fake_run_rg = _fake_rg(["src/main.py:1:def main():", "src/pkg/util.py:1:def helper():"])
+    monkeypatch.setattr(st, "_ripgrep_available", lambda: True)
+    monkeypatch.setattr(st, "run_rg", fake_run_rg)
+
+    result = registry.execute("grep", {"pattern": "def "}, ctx)
+
+    assert result.ok
+    assert result.metadata["engine"] == "ripgrep"
+    assert "main.py:1:def main():" in result.output
+    assert "util.py:1:def helper():" in result.output
+    assert result.metadata["files_matched"] == 2
+    # runs from the search root, so -g globs (which match relative to the cwd)
+    # behave like the Python walker's skip rules
+    assert fake_run_rg.calls["cwd"] == str(tree)
+    assert fake_run_rg.calls["args"][-4:] == ["-e", "def ", "--", "."]
+    assert "-i" in fake_run_rg.calls["args"]  # case-insensitive by default
+    assert "--hidden" in fake_run_rg.calls["args"]
+    assert any(arg == "!node_modules/**" for arg in fake_run_rg.calls["args"])
+
+
+def test_grep_no_matches_via_ripgrep(monkeypatch, registry, ctx):
+    st, fake_run_rg = _fake_rg([], exit_code=1)
+    monkeypatch.setattr(st, "_ripgrep_available", lambda: True)
+    monkeypatch.setattr(st, "run_rg", fake_run_rg)
+    result = registry.execute("grep", {"pattern": "zzz"}, ctx)
+    assert result.ok
+    assert "No matches" in result.output
+    assert result.metadata["matches"] == 0
+
+
+def test_grep_invalid_regex_via_ripgrep_is_a_structured_error(monkeypatch, registry, ctx):
+    st, fake_run_rg = _fake_rg([], exit_code=2, stderr="regex parse error: unclosed group\n")
+    monkeypatch.setattr(st, "_ripgrep_available", lambda: True)
+    monkeypatch.setattr(st, "run_rg", fake_run_rg)
+    result = registry.execute("grep", {"pattern": "([unclosed"}, ctx)
+    assert not result.ok
+    assert result.error.code == "invalid_regex"
+
+
+def test_grep_times_out_and_falls_back_to_python(monkeypatch, registry, ctx, tree):
+    st, fake_run_rg = _fake_rg([], exit_code=-1, timed_out=True)
+    monkeypatch.setattr(st, "_ripgrep_available", lambda: True)
+    monkeypatch.setattr(st, "run_rg", fake_run_rg)
+    result = registry.execute("grep", {"pattern": "def "}, ctx)
+    assert result.ok
+    assert result.metadata["engine"] == "python"  # graceful fallback
+    assert "main.py:1:def main():" in result.output
+
+
+def test_ripgrep_can_be_disabled_by_environment(monkeypatch):
+    from minicode.tools.search_tools import _rg_excludes, _ripgrep_available
+
+    monkeypatch.setenv("MINICODE_NO_RIPGREP", "1")
+    assert _ripgrep_available() is False
+    monkeypatch.delenv("MINICODE_NO_RIPGREP")
+    assert _ripgrep_available() is True
+    # the exclude set mirrors the Python walker's skip list
+    excludes = set(_rg_excludes())
+    assert "!node_modules/**" in excludes
+    assert "!.git/**" in excludes
+    assert "!*.pyc" in excludes

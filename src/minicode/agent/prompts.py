@@ -17,6 +17,12 @@ Environment
 Project
 {{ project }}
 
+{% if project_instructions %}\
+Project instructions (AGENTS.md / CLAUDE.md) - follow them; they override the
+defaults below when the two conflict:
+{{ project_instructions }}
+
+{% endif %}\
 Available tools
 {{ tools_list }}
 

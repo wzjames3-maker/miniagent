@@ -64,6 +64,19 @@ def test_group_sessions_orders_newest_first_and_drops_empty_buckets():
 # --------------------------------------------------------------------------- #
 # context meter
 # --------------------------------------------------------------------------- #
+def test_cache_label_formats_prompt_cache_tokens():
+    from minicode.ui.port import cache_label, format_status_line
+
+    assert cache_label({}) is None
+    assert cache_label({"cache_read_tokens": 0, "cache_write_tokens": 0}) is None
+    assert cache_label({"cache_read_tokens": 12_345}) == "cache 12.3K"
+    assert cache_label({"cache_write_tokens": 5000}) == "cache w:5.0K"
+    assert cache_label({"cache_read_tokens": 12_345, "cache_write_tokens": 5000}) == "cache 12.3Kr/5.0Kw"
+    # the shared status line shows it too, and skips it when there is nothing
+    assert "cache 12.3K" in format_status_line({"provider": "ds", "model": "m", "cache_read_tokens": 12_345})
+    assert "cache" not in format_status_line({"provider": "ds", "model": "m"})
+
+
 def test_context_bar_fills_proportionally():
     from minicode.ui.textual.theme import context_bar
 

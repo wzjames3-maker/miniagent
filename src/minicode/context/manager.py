@@ -11,6 +11,16 @@ the agent alive, applied in increasing aggressiveness:
    idea, made budget-driven so it works without a real tokenizer)
 
 After compaction the agent simply keeps going with the shortened history.
+
+**Cache discipline (OpenCode-aligned).** Between compactions the history must
+stay *byte-identical*: providers cache the leading prefix of the request
+(OpenAI/DeepSeek cache automatically, Anthropic via explicit breakpoints), so
+rewriting an old message mid-session would silently invalidate the cache for
+every subsequent request. Therefore ``prepare()`` only ever shrinks by running
+a full compaction - pruning never runs on its own between model calls. The
+only places that rewrite history are compaction itself (the cache was going to
+break there anyway) and ``rebuild()`` on session resume (a one-time
+normalisation of old session files).
 """
 
 from __future__ import annotations
@@ -135,6 +145,11 @@ class ContextManager:
         The most recent ``prune_protect_tokens`` worth of output is left alone,
         and the last assistant turn is always protected so the model never loses
         the result of the step it just took.
+
+        Cache note: rewriting history invalidates the provider's prefix cache,
+        so this is **only** called from ``compact()`` (where the prefix breaks
+        anyway) and ``rebuild()`` (one-time normalisation on resume) - never
+        between model calls.
         """
         if not self.config.prune:
             return 0
@@ -305,17 +320,23 @@ class ContextManager:
     # entry point used by the agent
     # ------------------------------------------------------------------ #
     def prepare(self, messages: list[dict[str, Any]], *, force: bool = False) -> CompactionResult:
-        """Shrink the history if needed. Safe to call before every model query."""
+        """Shrink the history if needed. Safe to call before every model query.
+
+        Between compactions the history is deliberately left **untouched**, even
+        though mid-session pruning would free tokens sooner: rewriting an old
+        message would break the provider's prefix cache for every later request
+        (see the module docstring). Shrinking happens only when a compaction
+        runs - pruning is compaction's first stage.
+        """
         if force or self.needs_compaction(messages):
             return self.compact(messages)
         before = self.estimate(messages)
-        freed = self.prune_tool_outputs(messages)
         return CompactionResult(
             messages=messages,
             compacted=False,
-            pruned_tokens=freed,
+            pruned_tokens=0,
             before_tokens=before,
-            after_tokens=self.estimate(messages),
+            after_tokens=before,
         )
 
     def rebuild(self, messages: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:

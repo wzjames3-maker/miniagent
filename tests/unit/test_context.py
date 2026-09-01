@@ -232,6 +232,36 @@ def test_prepare_force_compacts_on_demand():
     assert result.compacted
 
 
+def test_prepare_keeps_history_byte_identical_between_compactions():
+    """Cache discipline: below the compaction threshold, prepare() must not
+    rewrite anything - pruning old tool output mid-session would invalidate
+    the provider's prefix cache for every later request (OpenCode-aligned)."""
+    manager = ContextManager(
+        ContextConfig(
+            max_tokens=1_000_000,  # far below the compaction threshold
+            prune=True,
+            prune_protect_tokens=10,
+            prune_minimum_tokens=10,
+        )
+    )
+    messages = [
+        _msg("user", "u1"),
+        _msg("assistant", "a1"),
+        _tool_msg("x" * 5000),  # old, prunable tool output
+        _msg("user", "u2"),
+        _msg("assistant", "a2"),
+        _tool_msg("y" * 5000),
+    ]
+    snapshot = [dict(m) for m in messages]
+
+    result = manager.prepare(messages)
+
+    assert not result.compacted
+    assert manager.pruned_count == 0  # pruning must NOT run between compactions
+    assert result.messages is messages
+    assert result.messages == snapshot  # byte-identical -> cache prefix intact
+
+
 def test_stats_reports_the_full_picture():
     manager = ContextManager(ContextConfig(max_tokens=1000))
     stats = manager.stats([_msg("user", "x" * 100)])
