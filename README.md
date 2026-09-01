@@ -46,7 +46,7 @@
 | 📋 项目指令 | 自动读取 `AGENTS.md` / `CLAUDE.md` 内容注入 system prompt（单文件 20k 字符截断，OpenCode 对齐） |
 | ⚡ 快速搜索 | `grep` 优先走 ripgrep（原生匹配器 + `.gitignore`），无 `rg` 自动回落纯 Python |
 | 🧩 可扩展 | 自定义工具、自定义 Provider、自定义命令 |
-| 🧪 测试完善 | 单元 + 集成 + TUI 测试，当前 `398 passed / 2 skipped` |
+| 🧪 测试完善 | 单元 + 集成 + TUI 测试，当前 `323 passed / 2 skipped` |
 
 ---
 
@@ -525,7 +525,7 @@ python -m ruff check src tests scripts
 当前状态：
 
 ```text
-398 passed, 2 skipped
+323 passed, 2 skipped
 ```
 
 ---
