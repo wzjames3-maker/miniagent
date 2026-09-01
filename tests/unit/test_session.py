@@ -100,7 +100,7 @@ def test_missing_get_returns_none(sessions):
 # --------------------------------------------------------------------------- #
 def test_messages_and_tool_calls_are_persisted(sessions):
     session = sessions.create(provider="p", model="m")
-    sessions.append_message(session, {"role": "user", "content": "hello", "extra": {}})
+    sessions.extend_messages(session, [{"role": "user", "content": "hello", "extra": {}}])
     sessions.extend_messages(
         session,
         [
@@ -124,11 +124,11 @@ def test_messages_and_tool_calls_are_persisted(sessions):
 def test_auto_title_uses_first_user_message_once(sessions):
     session = sessions.create()
     assert session.title == "New session"
-    sessions.append_message(session, {"role": "user", "content": "refactor the parser", "extra": {}})
+    sessions.extend_messages(session, [{"role": "user", "content": "refactor the parser", "extra": {}}])
     assert sessions.maybe_auto_title(session)
     assert session.title == "refactor the parser"
     # a later message must not overwrite it
-    sessions.append_message(session, {"role": "user", "content": "now fix tests", "extra": {}})
+    sessions.extend_messages(session, [{"role": "user", "content": "now fix tests", "extra": {}}])
     assert not sessions.maybe_auto_title(session)
     assert session.title == "refactor the parser"
 
@@ -155,7 +155,7 @@ def test_set_model(sessions):
 def test_fork_copies_history_and_is_independent(sessions):
     parent = sessions.create(provider="p", model="m", title="parent")
     for text in ("one", "two", "three"):
-        sessions.append_message(parent, {"role": "user", "content": text, "extra": {}})
+        sessions.extend_messages(parent, [{"role": "user", "content": text, "extra": {}}])
     sessions.record_tool_call(parent, ToolCallRecord(id="c1", name="read", arguments={}))
     sessions.save(parent)
 
@@ -168,7 +168,7 @@ def test_fork_copies_history_and_is_independent(sessions):
     assert fork.metadata["forked_from"] == parent.id
 
     # mutating the fork must not touch the parent
-    sessions.append_message(fork, {"role": "user", "content": "four", "extra": {}})
+    sessions.extend_messages(fork, [{"role": "user", "content": "four", "extra": {}}])
     sessions.save(fork)
     assert sessions.require(parent.id).message_count == 3
     assert sessions.require(fork.id).message_count == 4
@@ -177,7 +177,7 @@ def test_fork_copies_history_and_is_independent(sessions):
 def test_fork_can_truncate_history(sessions):
     parent = sessions.create()
     for text in ("one", "two", "three"):
-        sessions.append_message(parent, {"role": "user", "content": text, "extra": {}})
+        sessions.extend_messages(parent, [{"role": "user", "content": text, "extra": {}}])
     sessions.save(parent)
 
     fork = sessions.fork(parent.id, at_message=2, title="rewind")
@@ -193,7 +193,7 @@ def test_fork_of_missing_session_raises(sessions):
 
 def test_fork_deep_copies_message_payloads(sessions):
     parent = sessions.create()
-    sessions.append_message(parent, {"role": "user", "content": "hi", "extra": {"nested": {"a": 1}}})
+    sessions.extend_messages(parent, [{"role": "user", "content": "hi", "extra": {"nested": {"a": 1}}}])
     sessions.save(parent)
     fork = sessions.fork(parent.id)
     fork.messages[0]["extra"]["nested"]["a"] = 99
@@ -203,25 +203,11 @@ def test_fork_deep_copies_message_payloads(sessions):
 # --------------------------------------------------------------------------- #
 # convenience
 # --------------------------------------------------------------------------- #
-def test_most_recent_and_search(sessions):
-    a = sessions.create(title="alpha task")
+def test_most_recent(sessions):
     b = sessions.create(title="beta task")
     b.updated_at += 10
     sessions.save(b)
     assert sessions.most_recent().id == b.id
-    assert [s.id for s in sessions.search("alpha")] == [a.id]
-    assert len(sessions.search(a.id)) == 1
-
-
-def test_stats(sessions):
-    session = sessions.create()
-    sessions.append_message(session, {"role": "user", "content": "x", "extra": {}})
-    sessions.record_tool_call(session, ToolCallRecord(id="c", name="grep", arguments={}))
-    sessions.save(session)
-    stats = sessions.stats()
-    assert stats["count"] == 1
-    assert stats["messages"] == 1
-    assert stats["tool_calls"] == 1
 
 
 def test_summaries_are_lightweight(sessions):
@@ -274,7 +260,7 @@ def test_auto_title_keeps_plain_messages_unwrapped():
 
 def test_maybe_auto_title_titles_from_unwrapped_task(sessions):
     session = sessions.create()
-    sessions.append_message(session, {"role": "user", "content": _WRAPPED_TASK, "extra": {}})
+    sessions.extend_messages(session, [{"role": "user", "content": _WRAPPED_TASK, "extra": {}}])
     assert sessions.maybe_auto_title(session)
     assert session.title == "read the file"
 
@@ -285,7 +271,7 @@ def test_maybe_auto_title_titles_from_unwrapped_task(sessions):
 def test_prune_removes_only_empty_placeholders(sessions):
     empty = sessions.create()  # "New session", no messages -> persisted
     real = sessions.create(title="real work")
-    sessions.append_message(real, {"role": "user", "content": "hi", "extra": {}})
+    sessions.extend_messages(real, [{"role": "user", "content": "hi", "extra": {}}])
     sessions.save(real)
     assert sessions.exists(empty.id)
     assert sessions.exists(real.id)
@@ -299,7 +285,7 @@ def test_prune_removes_only_empty_placeholders(sessions):
 def test_repair_titles_fixes_old_wrapped_titles(sessions):
     """Sessions written by the old titler keep a Task:/Instructions: title; repair it."""
     session = sessions.create(title="Task: read the file Instructions: - Treat the task above as the single so...")
-    sessions.append_message(session, {"role": "user", "content": _WRAPPED_TASK, "extra": {}})
+    sessions.extend_messages(session, [{"role": "user", "content": _WRAPPED_TASK, "extra": {}}])
     sessions.save(session)
 
     fixed = sessions.repair_titles()
@@ -310,7 +296,7 @@ def test_repair_titles_fixes_old_wrapped_titles(sessions):
 
 def test_repair_titles_leaves_clean_titles_alone(sessions):
     session = sessions.create(title="clean title")
-    sessions.append_message(session, {"role": "user", "content": "hi", "extra": {}})
+    sessions.extend_messages(session, [{"role": "user", "content": "hi", "extra": {}}])
     sessions.save(session)
     assert sessions.repair_titles() == 0
     assert sessions.require(session.id).title == "clean title"

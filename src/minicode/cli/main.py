@@ -329,7 +329,7 @@ def _cmd_providers(args: argparse.Namespace, settings: Settings) -> int:
 
     action = args.action or "login"
     if action == "list":
-        return _cmd_providers_list(settings)
+        return _list_providers(settings)
     if action == "login":
         try:
             result = configure_provider(
@@ -359,10 +359,6 @@ def _cmd_providers(args: argparse.Namespace, settings: Settings) -> int:
         return 0
     print(f"unknown action: {action}", file=sys.stderr)
     return 1
-
-
-def _cmd_providers_list(settings: Settings) -> int:
-    return _list_providers(settings)
 
 
 def _list_providers(settings: Settings) -> int:

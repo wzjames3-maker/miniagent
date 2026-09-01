@@ -178,10 +178,6 @@ class SessionManager:
     # ------------------------------------------------------------------ #
     # mutation helpers used by the agent
     # ------------------------------------------------------------------ #
-    def append_message(self, session: Session, message: Mapping[str, Any]) -> None:
-        session.messages.append(dict(message))
-        session.updated_at = time.time()
-
     def extend_messages(self, session: Session, messages: Iterable[Mapping[str, Any]]) -> None:
         session.messages.extend(dict(message) for message in messages)
 
@@ -238,18 +234,6 @@ class SessionManager:
                         self.save(session)
                         fixed += 1
         return fixed
-
-    def search(self, needle: str) -> list[Session]:
-        lowered = needle.lower()
-        return [s for s in self.list() if lowered in s.title.lower() or lowered in s.id.lower()]
-
-    def stats(self) -> dict[str, Any]:
-        sessions = self.list()
-        return {
-            "count": len(sessions),
-            "messages": sum(s.message_count for s in sessions),
-            "tool_calls": sum(s.tool_call_count for s in sessions),
-        }
 
 
 def _clone_message(message: Mapping[str, Any]) -> dict[str, Any]:

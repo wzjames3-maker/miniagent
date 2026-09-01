@@ -208,7 +208,7 @@ async def test_session_rail_is_scoped_to_the_current_project(tmp_path):
     app = MiniTUI(cwd=str(tmp_path))
     async with app.run_test(size=(120, 40)):
         other = app.core.sessions.create(title="other project", cwd=str(tmp_path.parent / "other"))
-        app.core.sessions.append_message(other, {"role": "user", "content": "other", "extra": {}})
+        app.core.sessions.extend_messages(other, [{"role": "user", "content": "other", "extra": {}}])
         app.core.sessions.save(other)
 
         app.refresh_sessions()
@@ -222,8 +222,8 @@ async def test_selecting_a_session_replays_its_messages():
     app = MiniTUI()
     async with app.run_test(size=(120, 40)) as pilot:
         earlier = app.core.sessions.create(title="earlier work")
-        app.core.sessions.append_message(earlier, {"role": "user", "content": "fix the failing test", "extra": {}})
-        app.core.sessions.append_message(earlier, {"role": "assistant", "content": "on it", "extra": {}})
+        app.core.sessions.extend_messages(earlier, [{"role": "user", "content": "fix the failing test", "extra": {}}])
+        app.core.sessions.extend_messages(earlier, [{"role": "assistant", "content": "on it", "extra": {}}])
         app.core.sessions.save(earlier)
 
         written: list[object] = []
@@ -244,7 +244,7 @@ async def test_resume_replays_through_the_slash_command_too():
     app = MiniTUI()
     async with app.run_test(size=(120, 40)) as pilot:
         earlier = app.core.sessions.create(title="earlier work")
-        app.core.sessions.append_message(earlier, {"role": "user", "content": "hello from the past", "extra": {}})
+        app.core.sessions.extend_messages(earlier, [{"role": "user", "content": "hello from the past", "extra": {}}])
         app.core.sessions.save(earlier)
 
         written: list[object] = []
@@ -437,7 +437,7 @@ async def test_mouse_click_on_session_rail_resumes():
     app = MiniTUI()
     async with app.run_test(size=(120, 40)) as pilot:
         earlier = app.core.sessions.create(title="earlier work")
-        app.core.sessions.append_message(earlier, {"role": "user", "content": "click me", "extra": {}})
+        app.core.sessions.extend_messages(earlier, [{"role": "user", "content": "click me", "extra": {}}])
         app.core.sessions.save(earlier)
         app.refresh_sessions()
         await pilot.pause()
