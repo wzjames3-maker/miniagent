@@ -43,11 +43,13 @@ def _normalize(spec: Any, call_index: int) -> AssistantMessage:
         arguments = raw.get("arguments", {})
         if not isinstance(arguments, str):
             arguments = json.dumps(arguments, ensure_ascii=False)
+        parsed, raw_arguments = Provider._parse_tool_arguments(arguments)
         calls.append(
             ToolCall(
                 id=raw.get("id", f"call_{call_index}_{index}"),
                 name=raw["name"],
-                **dict(zip(("arguments", "raw_arguments"), _split_args(arguments), strict=False)),
+                arguments=parsed,
+                raw_arguments=raw_arguments,
             )
         )
     return AssistantMessage(
@@ -59,14 +61,6 @@ def _normalize(spec: Any, call_index: int) -> AssistantMessage:
             output_tokens=int(spec.get("output_tokens", 10)),
         ),
     )
-
-
-def _split_args(raw: str) -> tuple[dict[str, Any], str]:
-    try:
-        parsed = json.loads(raw) if raw.strip() else {}
-    except json.JSONDecodeError:
-        return {}, raw
-    return (parsed if isinstance(parsed, dict) else {"value": parsed}), raw
 
 
 class ScriptedProvider(Provider):

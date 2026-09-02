@@ -10,7 +10,7 @@ import json
 import os
 import tempfile
 import threading
-from collections.abc import Callable, Iterable
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -84,6 +84,3 @@ class JsonDocumentStore:
             data = self.load(doc_id)
             if data is not None:
                 yield doc_id, data
-
-    def query(self, predicate: Callable[[str, Any], bool]) -> list[tuple[str, Any]]:
-        return [(doc_id, data) for doc_id, data in self.items() if predicate(doc_id, data)]

@@ -83,14 +83,8 @@ class Transcript:
     def on_error(self, message, *, details=None) -> None:
         self._write(f"\n!!! ERROR: {message} {details or ''}\n")
 
-    def on_status(self, status) -> None:
-        pass
-
     def on_compaction(self, info) -> None:
         self._write(f"\n--- compaction: {info.get('before_tokens')} -> {info.get('after_tokens')} ---\n")
-
-    def on_permission_denied(self, permission, patterns) -> None:
-        self._write(f"\n--- permission denied: {permission} {patterns} ---\n")
 
 
 def main() -> int:

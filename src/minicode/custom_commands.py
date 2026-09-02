@@ -7,13 +7,13 @@ from the user's data directory. A file's path *is* its name --
 handed to the agent. Writing a command therefore needs no Python, no plugin
 API and no restart: drop a file in and it is in the popover.
 
-The module owns five things and nothing else:
+The module owns four things and nothing else:
 
 * :func:`load_custom_commands` -- scan both roots into :class:`CustomCommand`,
 * :class:`CommandStore` -- builtins + custom as one list, which is what the
   popover filters and the dispatcher looks up,
 * :func:`render_template` -- fill ``$ARGUMENTS`` / ``$1`` before the run,
-* :func:`write_command` / :func:`delete_command` -- what the TUI manager calls.
+* :func:`write_command` -- what ``/command new`` calls.
 
 Execution is deliberately *not* here. A custom command is just a prompt, and
 running a prompt is the agent's job (see ``InteractiveApp.run_custom``), so a
@@ -38,7 +38,6 @@ __all__ = [
     "COMMANDS_DIR_NAME",
     "CustomCommand",
     "CommandStore",
-    "delete_command",
     "load_custom_commands",
     "normalize_name",
     "parse_command_file",
@@ -368,16 +367,6 @@ def command_file_text(
     if not frontmatter:
         return body + "\n"
     return f"---\n{frontmatter}\n---\n\n{body}\n"
-
-
-def delete_command(name: str, *, cwd: str | Path | None = None) -> Path | None:
-    """Delete a command file, project one first. Returns what was removed."""
-    for scope in ("project", "user"):
-        path = command_path(name, cwd=cwd, scope=scope)
-        if path.is_file():
-            path.unlink()
-            return path
-    return None
 
 
 def scaffold(name: str) -> str:

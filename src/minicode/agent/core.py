@@ -22,7 +22,6 @@ import platform
 import time
 from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime
-from pathlib import Path
 from typing import Any
 
 from jinja2 import StrictUndefined, Template
@@ -58,7 +57,6 @@ class CodingAgentConfig(AgentConfig):
     instance_template: str = INSTANCE_TEMPLATE
     doom_loop_threshold: int = 3
     """Interrupt after this many identical consecutive tool calls (0 disables)."""
-    output_path: Path | None = None
 
 
 class MiniModelAdapter:

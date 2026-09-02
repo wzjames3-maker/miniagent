@@ -19,7 +19,7 @@ from minicode.cli.commands import (
     handle_slash,
     match_commands,
 )
-from minicode.commands import CommandStore
+from minicode.custom_commands import CommandStore
 
 pytestmark = pytest.mark.unit
 
@@ -90,8 +90,6 @@ class _RecordingUI:
     def status_line(self, stats) -> None: ...
     def print_user(self, text: str) -> None: ...
     def ask_permission(self, request): ...
-    def confirm(self, question, *, default=True) -> bool:
-        return default
 
 
 class _FakeApp:

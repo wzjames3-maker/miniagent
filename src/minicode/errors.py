@@ -15,7 +15,6 @@ __all__ = [
     "ContextLengthError",
     "ProviderAPIError",
     "ToolError",
-    "PermissionError",
     "PermissionDeniedError",
     "PermissionRejectedError",
     "SessionError",
@@ -32,7 +31,7 @@ class ConfigError(MinicodeError):
 
 
 class ProviderError(MinicodeError):
-    retryable = False
+    pass
 
 
 class AuthenticationError(ProviderError):
@@ -41,7 +40,7 @@ class AuthenticationError(ProviderError):
 
 
 class RateLimitError(ProviderError):
-    retryable = True
+    pass
 
 
 class ContextLengthError(ProviderError):
@@ -49,22 +48,18 @@ class ContextLengthError(ProviderError):
 
 
 class ProviderAPIError(ProviderError):
-    retryable = True
+    pass
 
 
 class ToolError(MinicodeError):
     pass
 
 
-class PermissionError(MinicodeError):
+class PermissionDeniedError(MinicodeError):
     pass
 
 
-class PermissionDeniedError(PermissionError):
-    pass
-
-
-class PermissionRejectedError(PermissionError):
+class PermissionRejectedError(MinicodeError):
     pass
 
 

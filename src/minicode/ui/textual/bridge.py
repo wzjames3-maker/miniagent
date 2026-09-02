@@ -112,9 +112,6 @@ class TextualUI(EventSink):
             PermissionRequest(permission=request.permission, patterns=list(request.patterns), tool=request.tool)
         )
 
-    def confirm(self, question: str, *, default: bool = True) -> bool:
-        return self._app.request_confirm(question, default=default)
-
     # ------------------------------------------------------------------ #
     # EventSink
     # ------------------------------------------------------------------ #
@@ -166,9 +163,3 @@ class TextualUI(EventSink):
         )
         for note in info.get("notes") or []:
             self.print_info(f"  {note}")
-
-    def on_status(self, status: Mapping[str, Any]) -> None:
-        self.status_line(status)
-
-    def on_permission_denied(self, permission: str, patterns: Any) -> None:
-        self.print_error(f"permission denied: {permission}", details={"patterns": ", ".join(map(str, patterns or []))})

@@ -224,14 +224,3 @@ class ConsoleUI(EventSink):
         if answer in {"a", "always"}:
             return AskReply.ALWAYS
         return AskReply.REJECT
-
-    def confirm(self, question: str, *, default: bool = True) -> bool:
-        try:
-            from rich.prompt import Prompt
-
-            answer = Prompt.ask(
-                question, choices=["y", "n"], default="y" if default else "n", console=self.console, show_choices=True
-            )
-        except (EOFError, KeyboardInterrupt):
-            return False
-        return answer.strip().lower() in {"y", "yes", ""}

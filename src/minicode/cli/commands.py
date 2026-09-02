@@ -290,8 +290,8 @@ def _commands(app: InteractiveApp, args: list[str]) -> str:
 
 def _command(app: InteractiveApp, args: list[str]) -> str:
     """Create a command file. Editing them is a TUI affair (``/command`` there)."""
-    # Imported here: minicode.commands imports this module for the registry.
-    from minicode.commands import normalize_name, scaffold, write_command
+    # Imported here: custom_commands imports this module for the registry.
+    from minicode.custom_commands import normalize_name, scaffold, write_command
 
     if args and args[0] in {"new", "add", "create"}:
         if len(args) < 2:

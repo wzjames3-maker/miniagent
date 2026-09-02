@@ -142,6 +142,9 @@ class ToolRegistry:
         # Centralized truncation (borrowed from opencode's Tool.wrap):
         # tools return raw output; the registry applies the shared limit so no
         # tool can bypass it and per-tool truncation boilerplate is eliminated.
+        # A truncation failure (disk error while saving the full output) must
+        # not turn a successful tool call into an error: the raw output is
+        # still usable, just bigger than ideal.
         try:
             if getattr(ctx, "truncate", None) is not None:
                 # ContextManager.truncate_tool_output mutates result in place

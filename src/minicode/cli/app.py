@@ -10,13 +10,13 @@ from minicode import __version__
 from minicode.agent.core import CodingAgent
 from minicode.agent.state import AgentStatus
 from minicode.cli.commands import SlashCommand
-from minicode.commands import CommandStore, render_template
 from minicode.config.settings import Settings
 from minicode.context.manager import ContextManager
+from minicode.custom_commands import CommandStore, render_template
 from minicode.permission.manager import PermissionManager, PermissionMode
 from minicode.permission.policy import Rule
 from minicode.providers.registry import ProviderRegistry, build_registry
-from minicode.session.manager import SessionManager
+from minicode.session.manager import SessionManager, _normalise_cwd
 from minicode.session.models import Session
 from minicode.tools.registry import ToolRegistry, build_default_registry
 from minicode.ui.console import ConsoleUI
@@ -25,14 +25,6 @@ from minicode.ui.port import UIFrontEnd
 from minicode.ui.prompt import create_reader
 
 __all__ = ["InteractiveApp", "AppHooks"]
-
-
-def _same_cwd(path: str, target: str) -> bool:
-    """Compare two working-directory strings after normalising symlinks/``..``."""
-    try:
-        return str(Path(path).expanduser().resolve()) == target
-    except OSError:
-        return str(Path(path).expanduser().absolute()) == target
 
 
 class AppHooks:
@@ -156,14 +148,18 @@ class InteractiveApp:
                 raise KeyError(f"Session not found: {session_id}")
             session.cwd = session.cwd or self.cwd
             return session
-        provider = self.provider.name if self.provider is not None else ""
-        model = self.provider.model if self.provider is not None else ""
+        return self._new_session()
+
+    def _provider_model(self) -> tuple[str, str]:
+        """``(provider, model)`` for the current provider, or ``("", "")``."""
+        if self.provider is None:
+            return "", ""
+        return self.provider.name, self.provider.model
+
+    def _new_session(self) -> Session:
+        provider, model = self._provider_model()
         return self.sessions.create(
-            provider=provider,
-            model=model,
-            cwd=self.cwd,
-            metadata={"cwd": self.cwd},
-            persist=False,
+            provider=provider, model=model, cwd=self.cwd, metadata={"cwd": self.cwd}, persist=False
         )
 
     def _build_agent(self, messages: list[dict[str, Any]] | None = None) -> CodingAgent:
@@ -180,6 +176,7 @@ class InteractiveApp:
             step_limit=self.settings.agent.step_limit,
             cost_limit=self.settings.agent.cost_limit,
             wall_time_limit_seconds=self.settings.agent.wall_time_limit_seconds,
+            max_consecutive_format_errors=self.settings.agent.max_consecutive_format_errors,
             doom_loop_threshold=self.settings.agent.doom_loop_threshold,
         )
         if messages is not None:
@@ -207,16 +204,11 @@ class InteractiveApp:
             self._persist(self.session)
             restored = self.context.rebuild(session.messages)
             self.agent = self._build_agent(messages=restored)
-            self.agent.messages = restored
         else:
             self.agent = None
 
     def new_session(self) -> Session:
-        provider = self.provider.name if self.provider is not None else ""
-        model = self.provider.model if self.provider is not None else ""
-        session = self.sessions.create(
-            provider=provider, model=model, cwd=self.cwd, metadata={"cwd": self.cwd}, persist=False
-        )
+        session = self._new_session()
         self._switch_session(session)
         return session
 
@@ -241,14 +233,9 @@ class InteractiveApp:
             if session.messages or (session.title and session.title != "New session")
         ]
         if cwd is not None:
-            try:
-                target = str(Path(cwd).resolve())
-            except OSError:
-                target = str(Path(cwd).absolute())
+            target = _normalise_cwd(cwd)
             sessions = [
-                session
-                for session in sessions
-                if not session.cwd or _same_cwd(session.cwd, target)
+                session for session in sessions if not session.cwd or _normalise_cwd(session.cwd) == target
             ]
         if all(session.id != self.session.id for session in sessions):
             sessions.insert(0, self.session)

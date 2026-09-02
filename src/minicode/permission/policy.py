@@ -53,28 +53,24 @@ class Action(str, Enum):
 DEFAULT_ACTION = Action.ASK
 
 
-class PermissionDenied(PermissionDeniedError):  # type: ignore[no-redef]
+class PermissionDenied(PermissionDeniedError):
     """Raised when a rule explicitly denies an operation."""
 
     def __init__(self, permission: str, patterns: Sequence[str], matching: Sequence[Rule] = ()):
-        from minicode.errors import PermissionDeniedError as _Base
-
-        _Base.__init__(self, f"Permission denied for {permission}: {', '.join(patterns) or '*'}")
+        super().__init__(f"Permission denied for {permission}: {', '.join(patterns) or '*'}")
         self.permission = permission
         self.patterns = list(patterns)
         self.matching = list(matching)
 
 
-class PermissionRejected(PermissionRejectedError):  # type: ignore[no-redef]
+class PermissionRejected(PermissionRejectedError):
     """Raised when the user rejects an ``ask`` prompt (optionally with feedback)."""
 
     def __init__(self, permission: str, patterns: Sequence[str], feedback: str = ""):
-        from minicode.errors import PermissionRejectedError as _Base
-
         msg = f"User rejected {permission}: {', '.join(patterns) or '*'}"
         if feedback:
             msg += f"\nUser feedback: {feedback}"
-        _Base.__init__(self, msg)
+        super().__init__(msg)
         self.permission = permission
         self.patterns = list(patterns)
         self.feedback = feedback
@@ -259,7 +255,6 @@ class Decision:
     action: Action
     permission: str
     patterns: list[str] = field(default_factory=list)
-    rule: Rule | None = None
     feedback: str = ""
 
     @property

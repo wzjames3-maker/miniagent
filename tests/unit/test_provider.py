@@ -27,7 +27,6 @@ from minicode.providers.base import (
 )
 from minicode.providers.openai_compat import OpenAICompatProvider
 from minicode.providers.registry import ProviderRegistry, ProviderSpec, build_registry
-from minicode.providers.scripted import ScriptedProvider
 from minicode.tools.base import ToolResult
 
 pytestmark = pytest.mark.unit
@@ -455,13 +454,6 @@ def test_registry_reports_missing_api_keys():
 def test_provider_is_abstract():
     with pytest.raises(TypeError):
         Provider(model="x")  # type: ignore[abstract]
-
-
-def test_mini_swe_agent_model_protocol_is_implemented():
-    provider = ScriptedProvider(responses=["hello"])
-    out = provider.query([{"role": "user", "content": "hi"}])
-    assert out["role"] == "assistant"
-    assert out["content"] == "hello"
 
 
 def test_max_tokens_override_reaches_the_payload():

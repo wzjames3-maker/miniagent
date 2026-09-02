@@ -75,7 +75,6 @@ class OpenAICompatProvider(Provider):
 
         #: ``include_usage`` only affects streaming; some servers reject it.
         self.include_usage: bool = bool(self.options.pop("include_usage", True))
-        self._last_request_at: float = 0.0
         self.client = OpenAI(
             api_key=self.api_key or "EMPTY",
             base_url=self.base_url or None,

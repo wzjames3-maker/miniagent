@@ -66,8 +66,6 @@ class UIPort(Protocol):
 
     def ask_permission(self, request: AskRequest) -> AskReply: ...
 
-    def confirm(self, question: str, *, default: bool = True) -> bool: ...
-
 
 @runtime_checkable
 class UIFrontEnd(UIPort, EventSink, Protocol):

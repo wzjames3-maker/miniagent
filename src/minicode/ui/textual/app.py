@@ -290,15 +290,6 @@ class MiniTUI(App[None]):
         answer = self._prompt(request.render(), kind="permission")
         return _PERMISSION_ANSWERS.get(answer, AskReply.REJECT)
 
-    def request_confirm(self, question: str, *, default: bool = True) -> bool:
-        renderable = Text.from_markup(f"[bold yellow]{question}[/]  [bold][y][/]es  [bold][n][/]o")
-        answer = self._prompt(renderable, kind="confirm")
-        if answer == "y":
-            return True
-        if answer == "n":
-            return False
-        return default
-
     def ask_text(self, prompt: str) -> str:
         """Free-form line input, used by the /login wizard.
 

@@ -126,7 +126,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "sessions":
         return _cmd_sessions(args, settings)
     if args.command == "models":
-        return _cmd_models(settings)
+        return _list_providers(settings)
     if args.command == "tools":
         return _cmd_tools(settings, cwd)
     if args.command == "inspect":
@@ -260,10 +260,6 @@ def _cmd_session(args: argparse.Namespace, settings: Settings) -> int:
         return 0
     print(f"unknown action: {action}", file=sys.stderr)
     return 1
-
-
-def _cmd_models(settings: Settings) -> int:
-    return _list_providers(settings)
 
 
 def _cmd_tools(settings: Settings, cwd: str | None) -> int:

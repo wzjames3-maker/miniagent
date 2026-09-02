@@ -80,21 +80,18 @@ def _seed_history(app, *, title: str, days: float) -> object:
     import time
 
     session = app.core.sessions.create(title=title)
-    app.core.sessions.append_message(session, {"role": "user", "content": title, "extra": {}})
-    app.core.sessions.append_message(
+    app.core.sessions.extend_messages(
         session,
-        {
-            "role": "assistant",
-            "content": "",
-            "extra": {"tool_calls": [{"name": "bash", "arguments": {"command": "pytest -q"}}]},
-        },
-    )
-    app.core.sessions.append_message(
-        session,
-        {"role": "tool", "content": "9 passed in 0.41s", "extra": {"tool_name": "bash"}},
-    )
-    app.core.sessions.append_message(
-        session, {"role": "assistant", "content": "Done - the suite is green again.", "extra": {}}
+        [
+            {"role": "user", "content": title, "extra": {}},
+            {
+                "role": "assistant",
+                "content": "",
+                "extra": {"tool_calls": [{"name": "bash", "arguments": {"command": "pytest -q"}}]},
+            },
+            {"role": "tool", "content": "9 passed in 0.41s", "extra": {"tool_name": "bash"}},
+            {"role": "assistant", "content": "Done - the suite is green again.", "extra": {}},
+        ],
     )
     app.core.sessions.save(session)
     # ``save`` re-stamps ``updated_at``, so backdate *after* it and write

@@ -12,8 +12,10 @@ minicode:
 * :class:`AssistantMessage` - text + tool calls + usage
 * tool results are plain ``{"role": "tool", "tool_call_id": ..., "content": str}``
 
-The class also implements mini-swe-agent's ``Model`` protocol so that a
-provider can be dropped into mini's own agents unchanged.
+The remaining ``format_*`` / ``get_template_vars`` / ``serialize`` methods are
+the parts of mini-swe-agent's ``Model`` protocol that
+:class:`~minicode.agent.core.MiniModelAdapter` delegates to; the adapter itself
+implements the protocol entry point (``query``).
 """
 
 from __future__ import annotations
@@ -269,13 +271,7 @@ class Provider(ABC):
     ) -> AssistantMessage:
         """Call the model. Implemented per wire protocol."""
 
-    # -- mini-swe-agent ``Model`` protocol -------------------------------- #
-    def query(self, messages: list[dict[str, Any]], **kwargs: Any) -> dict[str, Any]:
-        """mini-swe-agent compatible entry point (non-streaming)."""
-        tools = kwargs.pop("tools", None)
-        message = self.generate(messages, tools, **kwargs)
-        return message.to_message_dict()
-
+    # -- mini-swe-agent ``Model`` protocol (delegated to by MiniModelAdapter) -- #
     def format_message(self, **kwargs: Any) -> dict[str, Any]:
         role = kwargs.pop("role", "user")
         return {"role": role, **kwargs}

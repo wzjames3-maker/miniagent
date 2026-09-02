@@ -1,12 +1,10 @@
-"""Terminal input: single-line by default, multiline with a keystroke.
+"""Terminal input: single-line by default, multiline on request.
 
-Uses ``prompt_toolkit`` when available (history, multiline toggle) and falls back
-to ``input()`` so the CLI keeps working in dumb terminals and CI.
+Uses ``prompt_toolkit`` when available (persistent history) and falls back to
+``input()`` so the CLI keeps working in dumb terminals and CI.
 """
 
 from __future__ import annotations
-
-from collections.abc import Iterable
 
 __all__ = ["InputReader", "create_reader"]
 
@@ -14,11 +12,9 @@ __all__ = ["InputReader", "create_reader"]
 class InputReader:
     """Reads user input, with optional persistent history."""
 
-    def __init__(self, *, history_file: str | None = None, multiline_key: str = "c-o", use_prompt_toolkit: bool = True):
+    def __init__(self, *, history_file: str | None = None, use_prompt_toolkit: bool = True):
         self.history_file = history_file
-        self.multiline_key = multiline_key
         self._session = None
-        self._fallback_history: list[str] = []
         if use_prompt_toolkit:
             self._session = self._build_session()
 
@@ -65,11 +61,6 @@ class InputReader:
             multiline=True,
             history=self._session.history,
         )
-
-    def history(self) -> Iterable[str]:
-        if self._session is not None and self._session.history is not None:
-            return [item for item in self._session.history.get_strings()]
-        return list(self._fallback_history)
 
 
 def create_reader(*, history_file: str | None = None, use_prompt_toolkit: bool = True) -> InputReader:
